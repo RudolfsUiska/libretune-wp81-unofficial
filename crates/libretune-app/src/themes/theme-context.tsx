@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, ReactNode } from 'react';
+import { isMetroBackground, setMetroTheme, useMetroPrefs } from '../metro/theme';
 
 export type ThemeName = 'dark' | 'light' | 'midnight' | 'carbon' | 'synthwave' | 'solarized' | 'nord' | 'dracula' | 'highcontrast';
 
@@ -24,20 +25,27 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_STORAGE_KEY = 'libretune-theme';
 
+/**
+ * The Windows Phone build keeps the theme in the Metro prefs (metro/theme.ts),
+ * so LibreTune's theme picker (Settings > Appearance) and the start+theme page
+ * are two views of one setting; either one recolours the whole app.
+ */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<ThemeName>(() => {
-    // Load from localStorage or default to dark
-    const saved = localStorage.getItem(THEME_STORAGE_KEY);
-    return (saved as ThemeName) || 'dark';
-  });
+  const prefs = useMetroPrefs();
+  const theme = prefs.background as ThemeName;
 
-  const setTheme = (newTheme: ThemeName) => {
-    setThemeState(newTheme);
-    localStorage.setItem(THEME_STORAGE_KEY, newTheme);
-  };
+  const setTheme = useCallback((newTheme: ThemeName) => {
+    if (!isMetroBackground(newTheme)) return;
+    setMetroTheme(newTheme);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
-    // Apply theme class to document root
+    // Applied by applyMetroPrefs too; kept so data-theme is right on mount.
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 

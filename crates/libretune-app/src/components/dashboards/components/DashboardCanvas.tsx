@@ -37,6 +37,14 @@ interface Props {
   isConnected: boolean;
   wrapperRef: React.RefObject<HTMLDivElement>;
   onContextMenu: (e: React.MouseEvent, gaugeId: string | null) => void;
+  /**
+   * Fill the whole area, as TunerStudio does: gauges sit at fractions of the
+   * window, so the dash stretches to any screen. With `forcedAspect` (the
+   * file's force-aspect setting) it is the largest box of that shape that
+   * fits, centred. Replaces the fixed-shape, scroll-or-shrink sizing.
+   */
+  fill?: boolean;
+  forcedAspect?: number | null;
 }
 
 /**
@@ -65,6 +73,8 @@ export default function DashboardCanvas({
   isConnected,
   wrapperRef,
   onContextMenu,
+  fill = false,
+  forcedAspect = null,
 }: Props) {
   const cluster = dashFile.gauge_cluster;
   const toPercent = (v: number | undefined | null) => (v ?? 0) * 100;
@@ -125,20 +135,29 @@ export default function DashboardCanvas({
   return (
     <div
       ref={wrapperRef}
-      className={`ts-dashboard-wrapper${scrollable ? ' ts-dashboard-wrapper--scroll' : ''}`}
+      className={`ts-dashboard-wrapper${fill ? ' ts-dashboard-wrapper--fill' : scrollable ? ' ts-dashboard-wrapper--scroll' : ''}`}
     >
       <div
-        className={`ts-dashboard ${designerMode ? 'designer-mode' : ''}`}
+        className={`ts-dashboard ${designerMode ? 'designer-mode' : ''}${fill ? ' ts-dashboard--fill' : ''}`}
         style={{
           backgroundColor: bgColor,
           backgroundImage: backgroundImageLayers || undefined,
           backgroundSize: backgroundSizeLayers,
           backgroundRepeat: backgroundRepeatLayers,
           backgroundPosition: 'center',
-          aspectRatio: `${aspectRatio}`,
-          width: scrollable ? '100%' : undefined,
-          transform: !scrollable && scale < 1 ? `scale(${scale})` : undefined,
-          transformOrigin: 'top center',
+          ...(fill
+            ? forcedAspect
+              ? {
+                  width: `min(100cqw, calc(100cqh * ${forcedAspect}))`,
+                  height: `min(100cqh, calc(100cqw / ${forcedAspect}))`,
+                }
+              : { width: '100%', height: '100%' }
+            : {
+                aspectRatio: `${aspectRatio}`,
+                width: scrollable ? '100%' : undefined,
+                transform: !scrollable && scale < 1 ? `scale(${scale})` : undefined,
+                transformOrigin: 'top center',
+              }),
         }}
         onContextMenu={(e) => onContextMenu(e, null)}
         onDragOver={(e) => {
@@ -164,8 +183,10 @@ export default function DashboardCanvas({
               top: `${toPercent(gauge.relative_y)}%`,
               width: `${toPercent(gauge.relative_width)}%`,
               height: `${toPercent(gauge.relative_height)}%`,
-              minWidth: !legacyMode && gauge.shortest_size > 0 ? `${gauge.shortest_size}px` : undefined,
-              minHeight: !legacyMode && gauge.shortest_size > 0 ? `${gauge.shortest_size}px` : undefined,
+              // Minimum sizes are desktop pixels; on a filled phone screen
+              // they would push gauges over their neighbours.
+              minWidth: !legacyMode && !fill && gauge.shortest_size > 0 ? `${gauge.shortest_size}px` : undefined,
+              minHeight: !legacyMode && !fill && gauge.shortest_size > 0 ? `${gauge.shortest_size}px` : undefined,
               aspectRatio: gauge.shape_locked_to_aspect ? '1 / 1' : undefined,
             };
 

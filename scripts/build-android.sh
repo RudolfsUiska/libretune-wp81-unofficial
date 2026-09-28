@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build (and optionally install) the LibreTune (unofficial Android port) APK on Windows (Git Bash).
+# Build (and optionally install) the LibreTune WP (Windows Phone 8.1 UI) APK on Windows (Git Bash).
 #
 #   scripts/build-android.sh [--release] [--install]
 #
@@ -77,5 +77,5 @@ echo "APK: $APK ($(du -h "$APK" | cut -f1))"
 
 if [ "$INSTALL" = 1 ]; then
   "$ADB" install -r "$APK"
-  "$ADB" shell am start -n com.libretune.app/com.libretune.app.MainActivity
+  "$ADB" shell am start -n com.libretune.wp/com.libretune.app.MainActivity
 fi

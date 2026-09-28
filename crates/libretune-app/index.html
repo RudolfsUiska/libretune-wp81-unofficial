@@ -1,45 +1,64 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-metro="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#000000" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <!-- Fixed layout width: the UI has no phone layout yet, so the Android
-         build lays it out at a fixed width and scales that to fit the screen
-         (MainActivity enables this). Portrait gets a narrower width so text
-         stays readable. The UI scale setting (View > UI Scale, see
-         src/utils/uiScale.ts) divides that width, so 200% genuinely reflows
-         the page into half the room. Desktop webviews ignore the viewport
-         tag, so there the scale is applied as CSS zoom instead. -->
-    <meta name="viewport" id="viewport" content="width=1100" />
+    <!-- Phone layout: the page is laid out at the screen's own width in CSS
+         pixels, divided by the "display density" setting (Settings > display
+         density, src/metro/theme.ts), so "more content" genuinely reflows into
+         a wider page. MainActivity honours the fixed width (wide viewport).
+         Pinch-zoom is off, as in a native app. -->
+    <meta name="viewport" id="viewport" content="width=device-width, user-scalable=no, viewport-fit=cover" />
     <script>
       (function () {
+        var root = document.documentElement;
         var vp = document.getElementById('viewport');
         var android = /Android/i.test(navigator.userAgent);
-        function scale() {
+        var ACCENTS = {
+          lime: '#A4C400', green: '#60A917', emerald: '#008A00', teal: '#00ABA9', cyan: '#1BA1E2',
+          cobalt: '#0050EF', indigo: '#6A00FF', violet: '#AA00FF', pink: '#F472D0', magenta: '#D80073',
+          crimson: '#A20025', red: '#E51400', orange: '#FA6800', amber: '#F0A30A', yellow: '#E3C800',
+          brown: '#825A2C', olive: '#6D8764', steel: '#647687', mauve: '#76608A', taupe: '#87794E'
+        };
+        function prefs() {
           try {
-            var s = parseFloat(localStorage.getItem('libretune.uiScale'));
-            return s >= 1 && s <= 3 ? s : 1;
+            return JSON.parse(localStorage.getItem('libretune.metro') || '{}') || {};
           } catch (e) {
-            return 1;
+            return {};
           }
         }
-        function apply() {
-          var s = scale();
+        // Keep in step with THEME_LOOK in src/metro/theme.ts.
+        var THEMES = {
+          dark: '#0050EF', light: '#0050EF', midnight: '#2EA043', carbon: '#0F62FE', synthwave: '#FF2BD6',
+          solarized: '#B58900', nord: '#5E81AC', dracula: '#9D6CF0', highcontrast: '#FFFF00'
+        };
+        var p = prefs();
+        var bg = THEMES[p.background] ? p.background : 'dark';
+        var accent = p.accent === 'theme' ? THEMES[bg] : ACCENTS[p.accent] || ACCENTS.cobalt;
+        root.setAttribute('data-metro', bg);
+        root.setAttribute('data-theme', bg);
+        root.style.setProperty('--wp-accent', accent);
+        if (bg === 'highcontrast' && p.accent === 'theme') root.style.setProperty('--wp-on-accent', '#000000');
+
+        function applyDensity() {
+          var d = parseFloat(prefs().density);
+          if (!(d > 0.5 && d < 2)) d = 1;
           if (android) {
             var portrait = screen.width < screen.height;
-            vp.setAttribute('content', 'width=' + Math.round((portrait ? 640 : 1100) / s));
+            var w = portrait ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+            vp.setAttribute('content', d === 1 ? 'width=device-width, user-scalable=no, viewport-fit=cover' : 'width=' + Math.round(w / d) + ', user-scalable=no, viewport-fit=cover');
           } else {
-            document.documentElement.style.zoom = s === 1 ? '' : String(s);
+            root.style.zoom = d === 1 ? '' : String(d);
           }
         }
-        window.__applyUiScale = apply;
-        apply();
-        addEventListener('resize', apply);
-        addEventListener('orientationchange', apply);
+        window.__applyMetroDensity = applyDensity;
+        applyDensity();
+        addEventListener('orientationchange', function () { setTimeout(applyDensity, 100); });
       })();
     </script>
-    <title>LibreTune - Free and Open Source Tuning Suite</title>
+    <title>LibreTune</title>
   </head>
 
   <body>

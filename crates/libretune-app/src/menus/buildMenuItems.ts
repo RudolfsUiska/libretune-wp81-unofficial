@@ -1,9 +1,8 @@
 import type { TFunction } from "i18next";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { MenuItem as TunerMenuItem, Tab } from "../components/tuner-ui";
-import { THEME_INFO, ThemeName } from "../themes";
-import { UI_SCALES, UiScale, setUiScale } from "../utils/uiScale";
+import type { ThemeName } from "../themes";
+import type { UiScale } from "../utils/uiScale";
 import { openDashboardsFullscreen as dashFsPref, openTabsFullscreen as tabsFsPref } from "../utils/viewFullscreen";
 import type {
   BackendMenu,
@@ -71,24 +70,19 @@ export interface BuildMenuItemsDeps {
   setActiveTabId: (id: string) => void;
 }
 
-function quitApp(): void {
-  getCurrentWindow()
-    .close()
-    .catch((err) => console.error("[quitApp] Failed to close window:", err));
-}
 
 export function buildMenuItems(deps: BuildMenuItemsDeps): TunerMenuItem[] {
   const {
-    t, currentProject, tuneModified, status, ecuType, iniCapabilities, backendMenus, theme,
-    uiScale, openDashboardsFullscreen, openTabsFullscreen, sidebarVisible, showEcuMenus, tabs, openTarget, handleStdTarget, openHelpTopic, showToast,
+    t, currentProject, tuneModified, status, ecuType, iniCapabilities, backendMenus,
+    openDashboardsFullscreen, openTabsFullscreen, showEcuMenus, tabs, openTarget, handleStdTarget, openHelpTopic, showToast,
     closeProject, handleCreateRestorePoint,
     setConnectEcuWizardOpen, setImportProjectOpen, setSaveDialogOpen, setLoadDialogOpen,
     setOnlineIniDialogOpen,
     setBurnDialogOpen, setFirmwareUpdateDialogOpen, setRestorePointsOpen, setTuneHistoryOpen, setSettingsDialogOpen,
     setMathChannelsDialogOpen, setAfrDelayTestOpen, setBaseMapDialogOpen, setTableComparisonOpen,
     setTuneFileDiffOpen, setDynoOverlayOpen, setPluginPanelOpen, agentPanelVisible, setAgentPanelVisible, setConnectionDialogOpen,
-    setUserManualOpen, setUserManualSection, setAboutDialogOpen, setSidebarVisible,
-    setTheme, setTabs, setTabContents, setActiveTabId,
+    setUserManualOpen, setUserManualSection, setAboutDialogOpen,
+    setTabs, setTabContents, setActiveTabId,
   } = deps;
 
   const fileMenuItems: TunerMenuItem["items"] = currentProject
@@ -107,8 +101,6 @@ export function buildMenuItems(deps: BuildMenuItemsDeps): TunerMenuItem[] {
         { id: "tune-history", label: t('file.tuneHistory'), onClick: () => setTuneHistoryOpen(true) },
         { id: "sep3", label: "", separator: true },
         { id: "burn", label: t('file.burnToEcu'), onClick: () => setBurnDialogOpen(true), disabled: status.state !== "Connected" || !tuneModified },
-        { id: "sep4", label: "", separator: true },
-        { id: "exit", label: t('file.exit'), onClick: quitApp },
       ]
     : [
         { id: "connect-ecu-wizard", label: "Connect ECU / New Project…", onClick: () => setConnectEcuWizardOpen(true) },
@@ -116,8 +108,6 @@ export function buildMenuItems(deps: BuildMenuItemsDeps): TunerMenuItem[] {
         { id: "search-ini-online", label: "Search for INI Online…", onClick: () => setOnlineIniDialogOpen(true) },
         { id: "sep1", label: "", separator: true },
         { id: "settings", label: t('file.settings'), onClick: () => setSettingsDialogOpen(true) },
-        { id: "sep2", label: "", separator: true },
-        { id: "exit", label: t('file.exit'), onClick: quitApp },
       ];
 
   const fileMenu: TunerMenuItem = { id: "file", label: t('file.title'), items: fileMenuItems };
@@ -135,29 +125,6 @@ export function buildMenuItems(deps: BuildMenuItemsDeps): TunerMenuItem[] {
         }
         setActiveTabId("dashboard");
       }},
-      { id: "sidebar", label: t('view.toggleSidebar'), onClick: () => setSidebarVisible(!sidebarVisible) },
-      { id: "sep1", label: "", separator: true },
-      {
-        id: "theme",
-        label: t('view.theme'),
-        items: Object.entries(THEME_INFO).map(([key, info]) => ({
-          id: key,
-          label: info.label,
-          checked: theme === key,
-          onClick: () => setTheme(key as ThemeName),
-        })),
-      },
-      {
-        // Above 100% the menu bar collapses into a burger button (MenuBar).
-        id: "ui-scale",
-        label: t('view.uiScale'),
-        items: UI_SCALES.map((scale) => ({
-          id: `ui-scale-${scale * 100}`,
-          label: `${scale * 100}%`,
-          checked: uiScale === scale,
-          onClick: () => setUiScale(scale),
-        })),
-      },
       {
         // Takes effect when a dashboard opens; the dashboard's own header
         // button enters fullscreen right away.

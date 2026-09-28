@@ -32,10 +32,12 @@ describe('MenuBar UI scale', () => {
     act(() => setUiScale(1));
   });
 
-  it('shows the menu row at 100%', () => {
+  // The Windows Phone build is always laid out for a phone (uiScale.ts), so
+  // even a stored 100% gives the burger rather than the desktop menu row.
+  it('uses the burger even at 100% in the phone build', () => {
     render(<MenuBar items={items} />);
-    expect(screen.getByRole('menubar')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Menu')).not.toBeInTheDocument();
+    expect(screen.queryByRole('menubar')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Menu')).toBeInTheDocument();
   });
 
   it('collapses every menu behind a burger button when scaled up', () => {

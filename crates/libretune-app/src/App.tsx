@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ThemeProvider, useTheme } from "./themes";
@@ -8,14 +7,12 @@ import { initializeHotkeyManager } from "./services/hotkeyService";
 import { useRealtimeStore } from "./stores/realtimeStore";
 import { LANGUAGE_STORAGE_KEY } from "./i18n/languages";
 import {
-  TunerLayout,
   MenuItem as TunerMenuItem,
   ToolbarItem,
-  SidebarNode,
-  StatusItem,
   Tab,
-  LoggingIndicator,
 } from "./components/tuner-ui";
+import { MetroShell } from "./metro/MetroShell";
+import { AgentSidePanel } from "./components/agent/AgentSidePanel";
 import { SimpleGaugeInfo } from "./components/curves/CurveEditor";
 import type { DialogDefinition as RendererDialogDef } from "./components/dialogs/DialogRenderer";
 import { HelpTopicData } from "./components/dialogs/HelpViewer";
@@ -45,7 +42,6 @@ import { PinConfig } from "./components/hardware/PortEditor";
 import { useLoading } from "./contexts/LoadingContext";
 import { useToast } from "./contexts/ToastContext";
 import { formatError } from "./utils/formatError";
-import { buildSidebarItems } from "./utils/buildSidebarItems";
 import { useUiScale } from "./utils/uiScale";
 import { openDashboardsFullscreen as dashFsPref, openTabsFullscreen as tabsFsPref } from "./utils/viewFullscreen";
 import { TabContentRouter } from "./components/TabContentRouter";
@@ -341,34 +337,6 @@ function AppContent() {
   // docked visibility; popping out hides the docked panel.
   const [agentPanelVisible, setAgentPanelVisible] = useState(false);
 
-  // Pop the AI assistant out into its own window (mirrors the tab pop-out
-  // pattern in hooks/useTabPopout.ts). Uses hash routing handled by
-  // PopOutWindow.tsx + a localStorage handoff.
-  const handleAgentPopOut = useCallback(async () => {
-    const tabId = `agent-assistant`;
-    const storageKey = `popout-${tabId}`;
-    try {
-      localStorage.setItem(storageKey, JSON.stringify({ data: null }));
-      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-      const currentOrigin = window.location.origin;
-      const url = `${currentOrigin}/#/popout?tabId=${encodeURIComponent(tabId)}&type=agent&title=${encodeURIComponent('AI Assistant')}`;
-      const label = `popout-${tabId}`;
-      await new WebviewWindow(label, {
-        url,
-        title: 'AI Assistant',
-        width: 460,
-        height: 720,
-        center: true,
-        decorations: true,
-        devtools: true,
-      });
-      // Hide the docked panel once popped out.
-      setAgentPanelVisible(false);
-    } catch (e) {
-      console.error('[AgentPopOut] failed:', e);
-    }
-  }, []);
-
   // Sync status tracking (for partial sync warning)
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
 
@@ -376,7 +344,7 @@ function AppContent() {
   const [onboardingOpen, setOnboardingOpen] = useState(false);
 
   // Settings state
-  const [unitsSystem, setUnitsSystem] = useState<'metric'|'imperial'>('metric');
+  const [, setUnitsSystem] = useState<'metric'|'imperial'>('metric');
   const [autoBurnOnClose, setAutoBurnOnClose] = useState(false);
   // Legacy dashboard settings (removed with TabbedDashboard, may be re-added later)
   // const [indicatorColumnCount, setIndicatorColumnCount] = useState<number | 'auto'>('auto');
@@ -1118,7 +1086,8 @@ function AppContent() {
 
   async function refreshPorts(): Promise<string[]> {
     try {
-      const p = await invoke<string[]>("get_serial_ports");
+      // `?? []`: the connection dialog reads the list even while closed.
+      const p = (await invoke<string[]>("get_serial_ports")) ?? [];
       setPorts(p);
 
       if (p.length > 0) {
@@ -1518,10 +1487,6 @@ function AppContent() {
     [tabs, tabContents, activeTabId]
   );
 
-  const handleTabReorder = useCallback((newTabs: Tab[]) => {
-    setTabs(newTabs);
-  }, []);
-
   // Persist the active tab + open-tab list so they can be restored on launch.
   // Debounced so rapid tab switches don't hammer the settings file.
   const saveTabsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1541,7 +1506,7 @@ function AppContent() {
   }, [tabs, activeTabId, tabContents]);
 
   // Pop-out windows: handleTabPopout + tab:dock + table:updated listeners.
-  const { handleTabPopout } = useTabPopout({
+  useTabPopout({
     tabs,
     tabContents,
     handleTabClose,
@@ -1593,83 +1558,10 @@ function AppContent() {
     setSettingsDialogOpen, setActiveTabId, setIsLogging,
   }), [tCommon, status, tuneModified, isLogging, iniCapabilities, connectionRuntimePacketMode, defaultRuntimePacketMode]);
 
-  const sidebarItems: SidebarNode[] = useMemo(() => {
-    // Build menu-based sidebar items from INI menus
-    // Curves are accessed via their parent dialogs (e.g., Fuel > Injection configuration)
-    const menuItems: SidebarNode[] = (backendMenus ?? []).map((menu) => ({
-      id: menu.name,
-      label: menu.title.replace(/^&/, ""),
-      type: "folder" as const,
-      children: buildSidebarItems(menu.items, menu.name),
-    }));
-    
-    return menuItems;
-  }, [backendMenus]);
-
-  const handleSidebarItemSelect = useCallback(
-    (item: SidebarNode & { itemType?: string }, highlightTerm?: string) => {
-      console.log('[App] handleSidebarItemSelect called', { id: item.id, label: item.label, type: item.type, itemType: (item as any).itemType, highlightTerm });
-      if (item.type === "folder") {
-        // Folder clicked - expansion handled by Sidebar component
-        console.log('[App] Early return - item.type is folder');
-        return;
-      }
-      // Handle based on the original item type
-      if (item.itemType === "Std") {
-        console.log('[App] Calling handleStdTarget');
-        handleStdTarget(item.id, item.label);
-      } else if (item.itemType === "Help") {
-        console.log('[App] Calling openHelpTopic');
-        openHelpTopic(item.id, item.label);
-      } else {
-        // Table or Dialog - pass highlightTerm for search result highlighting
-        console.log('[App] Calling openTarget for Table/Dialog');
-        openTarget(item.id, item.label, highlightTerm);
-      }
-    },
-    [openTarget, handleStdTarget, openHelpTopic]
+  const tabTypes = useMemo(
+    () => Object.fromEntries(Object.entries(tabContents).map(([id, c]) => [id, c.type])),
+    [tabContents],
   );
-
-  // Status bar items - dynamically shows channels from INI FrontPage or defaults
-  const statusItems: StatusItem[] = useMemo(() => {
-    const items: StatusItem[] = [];
-
-    // Show partial sync warning if any pages failed
-    if (syncStatus && syncStatus.pages_failed > 0) {
-      items.push({
-        id: "sync-warning",
-        content: (
-          <span 
-            className="sync-warning-indicator" 
-            title={`Some ECU pages could not be read. This may cause display issues or missing data.\n\nErrors:\n${syncStatus.errors.join('\n')}`}
-            style={{ 
-              color: '#f59e0b', 
-              cursor: 'help',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            <AlertTriangle size={14} aria-hidden /> Partial sync ({syncStatus.pages_synced}/{syncStatus.total_pages})
-          </span>
-        ),
-      });
-    }
-
-    if (status.state === "Connected" && statusBarChannels.length > 0) {
-      // Realtime channel indicators are now rendered by StatusBar internally
-      // (each RealtimeChannelCell subscribes to a single channel)
-      // Only static items like sync warnings are added here
-    }
-
-    items.push({
-      id: "logging",
-      content: <LoggingIndicator isLogging={isLogging} duration={logDuration} />,
-      align: "right",
-    });
-
-    return items;
-  }, [status.state, statusBarChannels, isLogging, logDuration, syncStatus]);
 
   const connectionPhase: ConnectionPhase = useMemo(() => {
     if (signatureMismatchOpen && status.state === "Connected") {
@@ -1696,11 +1588,6 @@ function AppContent() {
     autoConnectPhase,
   ]);
 
-  const connectionPort =
-    selectedPort ||
-    currentProject?.connection.port ||
-    lastSerialPort ||
-    undefined;
 
 
   return (
@@ -1734,33 +1621,64 @@ function AppContent() {
           </div>
         </div>
       )}
-      <TunerLayout
+      <MetroShell
         menuItems={menuItems}
+        backendMenus={backendMenus ?? []}
         toolbarItems={toolbarItems}
+        searchIndex={searchIndex}
         tabs={tabs}
         activeTabId={activeTabId}
         onTabSelect={handleTabSelect}
         onTabClose={handleTabClose}
-        onTabReorder={handleTabReorder}
-        onTabPopout={handleTabPopout}
-        sidebarItems={sidebarItems}
-        sidebarVisible={sidebarVisible}
-        onSidebarToggle={() => setSidebarVisible(!sidebarVisible)}
-        onSidebarItemSelect={handleSidebarItemSelect}
-        searchIndex={searchIndex}
-        statusItems={statusItems}
-        connected={status.state === "Connected"}
-        ecuName={(status.state === "Connected" ? status.signature : (status.ini_name ? status.ini_name : undefined)) as string | undefined}
+        tabTypes={tabTypes}
+        status={status}
         connectionPhase={connectionPhase}
-        connectionPort={connectionPort}
-        onConnectionClick={() => setConnectionDialogOpen(true)}
-        projectName={currentProject?.name}
-        unitsSystem={unitsSystem}
-        agentPanelVisible={agentPanelVisible}
-        onAgentPanelCollapse={() => setAgentPanelVisible(false)}
-        onAgentPanelPopOut={handleAgentPopOut}
-        realtimeChannels={statusBarChannels}
+        ecuType={ecuType}
+        connecting={connecting}
+        syncing={syncing}
+        syncProgress={syncProgress}
+        packetMode={connectionRuntimePacketMode || defaultRuntimePacketMode}
+        syncWarning={
+          syncStatus && syncStatus.pages_failed > 0
+            ? `Partial sync: ${syncStatus.pages_synced} of ${syncStatus.total_pages} pages read. Some values may be missing.`
+            : null
+        }
+        currentProject={currentProject}
+        availableProjects={availableProjects}
+        iniCapabilities={iniCapabilities}
+        tuneModified={tuneModified}
+        isLogging={isLogging}
+        logDuration={logDuration}
+        ports={ports}
+        selectedPort={selectedPort}
+        setSelectedPort={setSelectedPort}
+        baudRate={baudRate}
+        onBaudChange={handleBaudChange}
+        refreshPorts={refreshPorts}
+        connect={() => void connect()}
+        disconnect={() => void disconnect()}
+        statusBarChannels={statusBarChannels}
         channelInfoMap={channelInfoMap}
+        actions={{
+          openTarget,
+          stdTarget: handleStdTarget,
+          helpTopic: openHelpTopic,
+          openProject,
+          deleteProject: handleDeleteProject,
+          closeProject,
+          newProject: () => setConnectEcuWizardOpen(true),
+          importProject: () => setImportProjectOpen(true),
+          searchIniOnline: () => setOnlineIniDialogOpen(true),
+          saveTune: () => setSaveDialogOpen(true),
+          loadTune: () => setLoadDialogOpen(true),
+          burn: () => setBurnDialogOpen(true),
+          advancedSettings: () => setSettingsDialogOpen(true),
+          connectionDialog: () => setConnectionDialogOpen(true),
+          about: () => setAboutDialogOpen(true),
+          manual: () => setUserManualOpen(true),
+          restorePoints: () => setRestorePointsOpen(true),
+          createRestorePoint: handleCreateRestorePoint,
+        }}
       >
         <ErrorBoundary>
           <TabContentRouter
@@ -1789,7 +1707,19 @@ function AppContent() {
             showToast={showToast}
           />
         </ErrorBoundary>
-      </TunerLayout>
+      </MetroShell>
+
+      {/* The AI assistant, a side panel on the desktop, is a full page here. */}
+      {agentPanelVisible && (
+        <div className="wp-agent-page">
+          <AgentSidePanel
+            width={window.innerWidth}
+            onResize={() => {}}
+            onCollapse={() => setAgentPanelVisible(false)}
+            onPopOut={() => {}}
+          />
+        </div>
+      )}
 
       <DialogOverlays
         status={status}

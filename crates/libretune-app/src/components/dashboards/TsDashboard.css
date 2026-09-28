@@ -630,3 +630,20 @@
   z-index: 900;
   border-radius: 0;
 }
+
+/* Phone build: the dash fills the area (DashboardCanvas `fill`). The
+   wrapper is a size container so a forced aspect ratio can be fitted with
+   container units. */
+.ts-dashboard-wrapper--fill {
+  container-type: size;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0;
+}
+
+.ts-dashboard.ts-dashboard--fill {
+  flex: none;
+  max-width: none;
+  max-height: none;
+}

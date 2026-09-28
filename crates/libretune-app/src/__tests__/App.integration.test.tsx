@@ -20,7 +20,25 @@ import { invoke } from '@tauri-apps/api/core';
 
 import { setupTauriMocks, tearDownTauriMocks } from '../test-utils/tauriMocks';
 
-describe('App integration (toolbar connection-info)', () => {
+// The Windows Phone shell has no toolbar: the connection page (all commands >
+// ECU connection) shows the packet mode and link metrics, and its "advanced
+// connection settings" link opens LibreTune's connection dialog.
+async function openConnectionPage() {
+  // The page stack outlives a test (a module singleton): an earlier test may
+  // have left the app on the connection page already.
+  await screen.findByText(/^ECU /, {}, { timeout: 10_000 });
+  if (screen.queryByText('advanced connection settings')) return;
+  fireEvent.click(await screen.findByLabelText('All commands', {}, { timeout: 10_000 }));
+  fireEvent.click(await screen.findByText('ecu connection'));
+  await screen.findByText('advanced connection settings');
+}
+
+async function openConnectionDialog() {
+  await openConnectionPage();
+  fireEvent.click(screen.getByText('advanced connection settings'));
+}
+
+describe('App integration (connection page)', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -115,9 +133,11 @@ describe('App integration (toolbar connection-info)', () => {
     // "Unable to find an element with the text: Auto", i.e. the deadline, not
     // a wrong render. It made pre-push.sh fail at random on Windows while
     // passing in CI.
-    await waitFor(() => expect(screen.getByText('Auto')).toBeInTheDocument(), {
+    await waitFor(() => expect(screen.getByText('ECU connected')).toBeInTheDocument(), {
       timeout: 10_000,
     });
+    await openConnectionPage();
+    expect(container.querySelector('.packet-mode')?.textContent).toBe('Auto');
 
     // After our synthetic metrics event arrives (via the spy), the metrics element should show a unit like kB/s or MB/s
     await waitFor(
@@ -163,8 +183,9 @@ describe('App integration (toolbar connection-info)', () => {
     );
 
     // Packet mode should show placeholder '—'
+    await openConnectionPage();
     await waitFor(() => expect(container.querySelector('.packet-mode')?.textContent).toBe('—'));
-  });
+  }, 15000);
 
   it('proceeds to sync on partial signature mismatch (advisory)', async () => {
     let syncCalled = false;
@@ -210,10 +231,7 @@ describe('App integration (toolbar connection-info)', () => {
       </LoadingProvider>
     );
 
-    // Open connection dialog via toolbar connect button
-    const connectBtn = await screen.findByTitle('Connect to ECU');
-    expect(connectBtn).toBeTruthy();
-    connectBtn.click();
+    await openConnectionDialog();
 
     // Select port in dialog and click Connect
     // Refresh ports first (dialog shows 'No ports found' initially from global setup)
@@ -242,7 +260,7 @@ describe('App integration (toolbar connection-info)', () => {
 
     // Ensure the signature mismatch dialog did NOT open (partial is advisory)
     expect(screen.queryByText('INI Signature Mismatch')).toBeNull();
-  });
+  }, 15000);
 
   it('passes Auto runtime packet mode through to the backend (Issue #71)', async () => {
     let connectArgs: any = null;
@@ -282,9 +300,7 @@ describe('App integration (toolbar connection-info)', () => {
     );
 
     // Open connection dialog and connect with the refreshed port
-    const connectBtn = await screen.findByTitle('Connect to ECU');
-    expect(connectBtn).toBeTruthy();
-    connectBtn.click();
+    await openConnectionDialog();
 
     const refreshBtn = await screen.findByText(/Refresh/);
     refreshBtn.click();
@@ -304,5 +320,5 @@ describe('App integration (toolbar connection-info)', () => {
     await waitFor(() => expect(connectArgs).not.toBeNull());
     expect(connectArgs.runtimePacketMode).toBe('Auto');
 
-  });
+  }, 15000);
 });

@@ -1,0 +1,553 @@
+/*
+ * Metro skin for LibreTune's own editors and dialogs (tables, curves, INI
+ * dialogs, AutoTune, the settings dialog...). They were built for a desktop
+ * window and are reused as they are; this file makes them look like Windows
+ * Phone: the theme tokens map onto the Metro palette, corners go square,
+ * shadows go away, and every modal becomes a message box or a full page.
+ */
+
+/* ------------------------------------------------------------- tokens */
+
+html[data-metro][data-theme] {
+  --font-sans: var(--font-wp);
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 15px;
+  --font-size-xl: 17px;
+  --font-size-2xl: 20px;
+  --font-size-3xl: 26px;
+
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-dropdown: none;
+
+  --bg-app: var(--wp-bg);
+  --bg-primary: var(--wp-bg);
+  --bg-secondary: var(--wp-l1);
+  --bg-surface: var(--wp-l1);
+  --surface: var(--wp-l1);
+  --bg-subtle: var(--wp-chrome);
+  --bg-elevated: var(--wp-chrome);
+  --bg-input: var(--wp-chrome-2);
+  --bg-hover: var(--wp-press);
+  --surface-hover: var(--wp-press);
+  --bg-active: var(--wp-press);
+  --bg-selected: var(--wp-accent);
+  --bg-menubar: var(--wp-chrome);
+  --bg-toolbar: var(--wp-bg);
+  --bg-statusbar: var(--wp-bg);
+  --bg-sidebar: var(--wp-bg);
+  --bg-tab: var(--wp-bg);
+  --bg-tab-active: var(--wp-bg);
+
+  --text-primary: var(--wp-fg);
+  --text-secondary: var(--wp-subtle);
+  --text-muted: var(--wp-subtle);
+  --text-disabled: var(--wp-faint);
+  --text-link: var(--wp-accent);
+
+  --border-default: var(--wp-line);
+  --border-subtle: var(--wp-line);
+  --border-strong: var(--wp-faint);
+  --border-focus: var(--wp-accent);
+
+  --primary: var(--wp-accent);
+  --primary-hover: var(--wp-accent);
+  --primary-active: var(--wp-accent);
+  --primary-text: var(--wp-on-accent);
+  --accent: var(--wp-accent);
+  --accent-hover: var(--wp-accent);
+  --accent-text: var(--wp-on-accent);
+
+  --success: #60a917;
+  --success-bg: #008a00;
+  --warning: #f0a30a;
+  --warning-bg: #fa6800;
+  --error: #e51400;
+  --error-bg: #a20025;
+  --info: var(--wp-accent);
+  --info-bg: var(--wp-accent);
+
+  --table-bg: var(--wp-bg);
+  --table-header-bg: var(--wp-chrome);
+  --table-axis-bg: var(--wp-chrome);
+  --table-cell-selected: var(--wp-accent);
+  --cursor-selected: var(--wp-accent);
+
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: var(--wp-faint);
+  --scrollbar-thumb-hover: var(--wp-subtle);
+
+  --menubar-height: 0px;
+  --toolbar-height: 44px;
+  --statusbar-height: 0px;
+}
+
+html[data-metro] body {
+  font-size: 14px;
+}
+
+/* ---------------------------------------------- square, flat, Segoe-ish */
+
+/* Everything goes square except what is round on purpose: Metro's own round
+   buttons and the retro dashboards, whose lamps and dials are the design. */
+html[data-metro] body *:where(:not(
+    .wp-round, .wp-round *, .wp-radio-dot, .wp-face-rec, .wp-sb-rec i, .wp-appbar-circle,
+    .wp-tile-action, .wp-task-close, input[type='radio'],
+    [class*='dashboard'] *, [class*='gauge'] *, [class*='cassette'] *, [class*='montego'] *,
+    [class*='cs16'] *
+  )) {
+  border-radius: 0 !important;
+}
+
+html[data-metro] body *:where(:not([class*='dashboard'] *, [class*='gauge'] *, [class*='cassette'] *, [class*='montego'] *)) {
+  box-shadow: none !important;
+  text-shadow: none;
+}
+
+html[data-metro] :is(button, input, select, textarea) {
+  font-family: var(--font-wp);
+}
+
+html[data-metro] ::selection {
+  background: var(--wp-accent);
+  color: var(--wp-on-accent);
+}
+
+html[data-metro] :focus-visible {
+  outline: 2px solid var(--wp-accent);
+  outline-offset: 0;
+}
+
+/* Thin scroll indicators, as on the phone. */
+html[data-metro] ::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+html[data-metro] ::-webkit-scrollbar-thumb {
+  background: var(--wp-faint);
+  border-radius: 0;
+}
+
+html[data-metro] ::-webkit-scrollbar-track,
+html[data-metro] ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+html[data-metro] .wp-content :is(h1, h2, h3) {
+  font-weight: 300;
+  letter-spacing: -0.01em;
+}
+
+/* ------------------------------------------------------------- inputs */
+
+/* WP text box: light fill, black text; white with an accent edge when focused. */
+html[data-metro] :is(
+    input:not([type]), input[type='text'], input[type='number'], input[type='search'],
+    input[type='password'], input[type='email'], input[type='url'], input[type='tel'],
+    textarea, select
+  ):not(.wp-textbox) {
+  background-color: var(--wp-input-bg) !important;
+  color: var(--wp-input-fg) !important;
+  border: 2px solid var(--wp-input-border) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none;
+}
+
+html[data-metro] :is(
+    input:not([type]), input[type='text'], input[type='number'], input[type='search'],
+    input[type='password'], input[type='email'], input[type='url'], input[type='tel'],
+    textarea, select
+  ):not(.wp-textbox, .table-cell-input, .cell-input, .axis-bin-label) {
+  min-height: 34px;
+  padding: 3px 8px;
+  font-size: 15px;
+}
+
+html[data-metro] :is(input, textarea, select):focus {
+  background-color: #fff !important;
+  border-color: var(--wp-accent) !important;
+}
+
+html[data-metro] :is(input, textarea, select):disabled {
+  opacity: 0.5;
+}
+
+html[data-metro] input::placeholder,
+html[data-metro] textarea::placeholder {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+html[data-metro] select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 9px center !important;
+  padding-right: 30px !important;
+}
+
+html[data-metro] select option {
+  background: #fff;
+  color: #000;
+}
+
+/* Check boxes and radio buttons: light square/circle, black mark. */
+html[data-metro] input[type='checkbox'] {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  margin: 0 8px 0 0;
+  padding: 0;
+  vertical-align: middle;
+  background: var(--wp-input-bg) !important;
+  border: 2px solid var(--wp-input-border) !important;
+  cursor: pointer;
+}
+
+html[data-metro] input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 0;
+  width: 6px;
+  height: 12px;
+  border: solid var(--wp-input-fg);
+  border-width: 0 3px 3px 0;
+  transform: rotate(45deg);
+}
+
+html[data-metro] input[type='radio'] {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0 8px 0 0;
+  border-radius: 50%;
+  background: var(--wp-input-bg);
+  border: 2px solid var(--wp-input-border);
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+html[data-metro] input[type='radio']:checked::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--wp-input-fg);
+}
+
+/* Slider: flat track, accent fill, a narrow upright thumb. */
+html[data-metro] input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 28px;
+  background: transparent;
+  border: none !important;
+}
+
+html[data-metro] input[type='range']::-webkit-slider-runnable-track {
+  height: 10px;
+  background: var(--wp-line);
+}
+
+html[data-metro] input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 24px;
+  margin-top: -7px;
+  background: var(--wp-fg);
+  border: none;
+}
+
+/* ------------------------------------------------------------- buttons */
+
+html[data-metro] :is(
+    .btn, .lt-btn, [class^='btn-'], [class*=' btn-'], .welcome-action-btn,
+    .lt-dialog__footer button, [class*='dialog-footer'] button, [class*='modal-footer'] button,
+    [class*='dialog-actions'] button, [class*='wizard-footer'] button, [class*='wizard-actions'] button,
+    .units-actions button
+  ):not(.btn-icon, .lt-btn--ghost, .wp-shell *) {
+  min-height: 40px;
+  padding: 4px 16px !important;
+  border: 2px solid var(--wp-fg) !important;
+  background: transparent !important;
+  color: var(--wp-fg) !important;
+  font-size: 15px !important;
+  font-weight: 400 !important;
+  text-transform: lowercase;
+  letter-spacing: 0;
+}
+
+html[data-metro] :is(
+    .btn, .lt-btn, [class^='btn-'], [class*=' btn-'], .welcome-action-btn,
+    .lt-dialog__footer button, [class*='dialog-footer'] button, [class*='modal-footer'] button,
+    [class*='dialog-actions'] button, [class*='wizard-footer'] button, [class*='wizard-actions'] button,
+    .units-actions button
+  ):not(.btn-icon, .lt-btn--ghost, .wp-shell *):active {
+  background: var(--wp-accent) !important;
+  border-color: var(--wp-accent) !important;
+  color: var(--wp-on-accent) !important;
+}
+
+html[data-metro] :is(.btn-primary, .lt-btn--primary, button.primary, .btn.primary):not(.wp-shell *) {
+  background: var(--wp-accent) !important;
+  border-color: var(--wp-accent) !important;
+  color: var(--wp-on-accent) !important;
+}
+
+html[data-metro] :is(.btn-danger, .lt-btn--danger, button.danger):not(.wp-shell *) {
+  border-color: #e51400 !important;
+}
+
+html[data-metro] :is(.btn, .lt-btn, [class^='btn-'], [class*=' btn-']):disabled {
+  opacity: 0.4;
+}
+
+/* ------------------------------------------------ modals → message boxes */
+
+/* Every overlay becomes a scrim; its card spans the width from the top,
+   like a WP message box, and grows to a full page when it needs to. */
+html[data-metro] :is(
+    .modal-overlay, .units-backdrop, .action-recorder-overlay, .plugin-consent-overlay,
+    .diff-modal-overlay, .tune-history-overlay, .lt-dialog-overlay, .ts-dashboard-dialog-overlay,
+    .ts-dashboard-selector-overlay, .command-warning-overlay, .rebin-dialog-overlay,
+    .preflight-backdrop, .dialog-overlay
+  ) {
+  background: var(--wp-scrim) !important;
+  align-items: flex-start !important;
+  justify-content: stretch !important;
+  padding: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  animation: wp-fade 0.15s !important;
+}
+
+html[data-metro] :is(
+    .modal-overlay, .units-backdrop, .action-recorder-overlay, .plugin-consent-overlay,
+    .diff-modal-overlay, .tune-history-overlay, .lt-dialog-overlay, .ts-dashboard-dialog-overlay,
+    .ts-dashboard-selector-overlay, .command-warning-overlay, .rebin-dialog-overlay,
+    .preflight-backdrop, .dialog-overlay
+  ) > :first-child {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+  border: none !important;
+  background: var(--wp-chrome) !important;
+  color: var(--wp-fg);
+  overflow: auto;
+  transform-origin: top;
+  animation: wp-swivel-in 0.3s var(--wp-ease) !important;
+}
+
+/* Desktop dialogs set minimum widths (400-880px) on inner panels; on a phone
+   those push the content off the right edge. Let the blocks shrink. */
+html[data-metro] :is(
+    .modal-overlay, .units-backdrop, .action-recorder-overlay, .plugin-consent-overlay,
+    .diff-modal-overlay, .tune-history-overlay, .lt-dialog-overlay, .ts-dashboard-dialog-overlay,
+    .ts-dashboard-selector-overlay, .command-warning-overlay, .rebin-dialog-overlay,
+    .preflight-backdrop, .dialog-overlay
+  ) :where(div, section, form, fieldset, header, footer, main, article, aside, nav, ul, ol, li, p) {
+  min-width: 0 !important;
+  max-width: 100%;
+}
+
+/* Tall dialogs (settings, wizards, viewers) are pages, not boxes. */
+html[data-metro] :is(
+    .lt-dialog--lg, .lt-dialog--xl, .lt-dialog--full, .settings-dialog, .import-wizard-dialog,
+    .manual-viewer-dialog, .help-viewer-dialog, .new-project-dialog, .table-comparison-dialog,
+    .math-channels-dialog, .restore-points-dialog, .onboarding-dialog-wrapper, .quick-start-dialog-wrapper
+  ) {
+  height: 100% !important;
+  background: var(--wp-bg) !important;
+}
+
+/* Dialog headers: a big lowercase title, no bar. */
+html[data-metro] :is(.dialog-header, .lt-dialog__header, [class*='dialog-header'], [class*='modal-header'], [class*='wizard-header']) {
+  background: transparent !important;
+  border: none !important;
+  padding: 18px 16px 6px !important;
+}
+
+html[data-metro] :is(.dialog-header, .lt-dialog__header, [class*='dialog-header'], [class*='modal-header'], [class*='wizard-header']) :is(h1, h2, h3, .lt-dialog__title),
+html[data-metro] .lt-dialog__title {
+  font-size: 30px !important;
+  font-weight: 300 !important;
+  line-height: 1.15;
+  text-transform: lowercase;
+  letter-spacing: -0.01em;
+}
+
+html[data-metro] :is(.dialog-close, .lt-dialog__close) {
+  border: 2px solid currentColor !important;
+  border-radius: 50% !important;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0 !important;
+  flex: none;
+}
+
+html[data-metro] :is(.lt-dialog__footer, [class*='dialog-footer'], [class*='modal-footer'], [class*='wizard-footer']) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px !important;
+  padding: 14px 16px 18px !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+html[data-metro] :is(.lt-dialog__footer, [class*='dialog-footer'], [class*='modal-footer'], [class*='wizard-footer']) > button {
+  flex: 1 1 0;
+}
+
+html[data-metro] :is(.lt-dialog__body, .dialog-body, [class*='dialog-content'], [class*='modal-body']) {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/* Tabs inside dialogs read like a pivot. */
+html[data-metro] [role='tablist']:not(.wp-shell *) {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 16px;
+}
+
+html[data-metro] [role='tab']:not(.wp-shell *) {
+  flex: none;
+  border: none !important;
+  background: transparent !important;
+  color: var(--wp-faint) !important;
+  font-size: 22px !important;
+  font-weight: 300 !important;
+  text-transform: lowercase;
+  padding: 2px 0 !important;
+}
+
+html[data-metro] [role='tab'][aria-selected='true']:not(.wp-shell *) {
+  color: var(--wp-fg) !important;
+}
+
+/* Context menus: a solid panel in the foreground colour. */
+html[data-metro] :is(.table-context-menu, .curve-context-menu, .gauge-context-menu) {
+  background: var(--wp-fg) !important;
+  color: var(--wp-bg) !important;
+  border: none !important;
+  padding: 6px 0 !important;
+  min-width: 220px;
+  animation: wp-context-in 0.2s var(--wp-ease);
+}
+
+html[data-metro] :is(.table-context-menu, .curve-context-menu, .gauge-context-menu) :is(button, [role='menuitem'], li, .context-menu-item) {
+  color: var(--wp-bg) !important;
+  background: transparent !important;
+  font-size: 17px !important;
+  padding: 9px 18px !important;
+  text-transform: lowercase;
+  border: none !important;
+}
+
+html[data-metro] :is(.table-context-menu, .curve-context-menu, .gauge-context-menu) :is(button, [role='menuitem'], li, .context-menu-item):hover {
+  background: var(--wp-accent) !important;
+  color: #fff !important;
+}
+
+html[data-metro] .tooltip {
+  background: var(--wp-chrome) !important;
+  color: var(--wp-fg) !important;
+  border: 1px solid var(--wp-line) !important;
+}
+
+/* ------------------------------------------------------------ editors */
+
+/* Toolbars inside editors: flat, on the page background. */
+html[data-metro] .wp-content :is([class*='toolbar'], [class*='-header']):not([class*='dialog-header']) {
+  background: transparent;
+  border-color: var(--wp-line);
+}
+
+html[data-metro] .wp-content [class*='toolbar'] button:not(.btn, .lt-btn) {
+  color: var(--wp-fg);
+}
+
+html[data-metro] .wp-content [class*='toolbar'] button:not(.btn, .lt-btn):active,
+html[data-metro] .wp-content [class*='toolbar'] button.active:not(.btn, .lt-btn) {
+  background: var(--wp-accent) !important;
+  color: #fff !important;
+}
+
+/* INI dialog fields: labels in the subtle colour above/beside the box. */
+html[data-metro] .wp-content :is(label, .field-label, .dialog-field-label) {
+  color: var(--wp-subtle);
+}
+
+html[data-metro] .wp-content fieldset,
+html[data-metro] .wp-content :is(.dialog-panel, .panel, [class*='panel-border']) {
+  border-color: var(--wp-line) !important;
+}
+
+html[data-metro] .wp-content :is(legend, .panel-title, [class*='panel-header'], [class*='section-title']) {
+  color: var(--wp-accent) !important;
+  font-weight: 400 !important;
+  text-transform: lowercase;
+  font-size: 17px !important;
+}
+
+/* The dashboard sits edge to edge; its own header becomes a chrome strip. */
+html[data-metro] .ts-dashboard-header {
+  background: var(--wp-bg) !important;
+  border-bottom: none !important;
+}
+
+html[data-metro] .ts-dashboard-title {
+  font-weight: 300;
+  font-size: 18px;
+  text-transform: lowercase;
+}
+
+html[data-metro] .view-fullscreen-exit {
+  border-radius: 50% !important;
+  border: 2px solid var(--wp-fg) !important;
+  background: var(--wp-scrim) !important;
+  color: var(--wp-fg) !important;
+}
+
+/* The desktop welcome screen is replaced by Start; the unit question stays. */
+html[data-metro] .units-dialog {
+  padding: 32px 20px 20px !important;
+}
+
+html[data-metro] .units-dialog h2 {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+html[data-metro] .units-actions {
+  display: flex;
+  gap: 12px;
+}
+
+html[data-metro] .units-actions button {
+  flex: 1;
+}

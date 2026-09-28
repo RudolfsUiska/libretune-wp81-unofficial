@@ -25,15 +25,17 @@ import {
 import { computeDashboardBounds } from './utils/dashboardBounds';
 import { useGaugeSweep } from './hooks/useGaugeSweep';
 import { useGaugeDemo } from './hooks/useGaugeDemo';
+import { getUiScale } from '../../utils/uiScale';
 import { useDashboardScale } from './hooks/useDashboardScale';
 import { useDashboardValidation } from './hooks/useDashboardValidation';
 import { useDashboardCRUD } from './hooks/useDashboardCRUD';
 import { useGaugeRangeSync } from './hooks/useGaugeRangeSync';
 import { Maximize2, Minimize2 } from 'lucide-react';
+import Win81Dashboard from './win81/Win81Dashboard';
 import CassetteDashboard from './cassette/CassetteDashboard';
 import MontegoDashboard from './montego/MontegoDashboard';
 import Cs16Dashboard from './cs16/Cs16Dashboard';
-import { CASSETTE_DASH_PATH, CS16_DASH_PATH, MONTEGO_DASH_PATH, isBuiltinDash } from './builtinDashes';
+import { CASSETTE_DASH_PATH, CS16_DASH_PATH, MONTEGO_DASH_PATH, WIN81_DASH_PATH, isBuiltinDash } from './builtinDashes';
 import { useDashboardFullscreen } from '../../utils/viewFullscreen';
 import '../../styles/view-fullscreen.css';
 import './TsDashboard.css';
@@ -150,6 +152,16 @@ export default function TsDashboard({ initialDashPath, isConnected = false }: Ts
     () => hasCompatIssues(compatibilityReport),
     [compatibilityReport],
   );
+
+  // The phone build fills the screen, as TunerStudio fills its window;
+  // a file that forces an aspect ratio keeps its shape, fitted and centred.
+  const fillScreen = getUiScale() > 1;
+  const forcedAspect = useMemo(() => {
+    const c = dashFile?.gauge_cluster;
+    return c && c.force_aspect && c.force_aspect_width > 0 && c.force_aspect_height > 0
+      ? c.force_aspect_width / c.force_aspect_height
+      : null;
+  }, [dashFile]);
 
   // Dynamic scaling: shrink the dashboard when the viewport is too small.
   const { scale, scrollable, wrapperRef: dashboardWrapperRef, recompute: computeScale } =
@@ -406,7 +418,9 @@ export default function TsDashboard({ initialDashPath, isConnected = false }: Ts
           onClose={() => setShowImportDialog(false)}
           onImportComplete={handleImportComplete}
         />
-        {selectedPath === CASSETTE_DASH_PATH ? (
+        {selectedPath === WIN81_DASH_PATH ? (
+          <Win81Dashboard isConnected={isConnected} />
+        ) : selectedPath === CASSETTE_DASH_PATH ? (
           <CassetteDashboard isConnected={isConnected} />
         ) : selectedPath === MONTEGO_DASH_PATH ? (
           <MontegoDashboard isConnected={isConnected} />
@@ -593,6 +607,8 @@ export default function TsDashboard({ initialDashPath, isConnected = false }: Ts
         isConnected={isConnected}
         wrapperRef={dashboardWrapperRef}
         onContextMenu={handleContextMenu}
+        fill={fillScreen}
+        forcedAspect={forcedAspect}
       />
 
       {/* Context Menu */}

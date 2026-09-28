@@ -18,7 +18,7 @@ android {
     namespace = "com.libretune.app"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
-        applicationId = "com.libretune.app"
+        applicationId = "com.libretune.wp"
         minSdk = 24
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()

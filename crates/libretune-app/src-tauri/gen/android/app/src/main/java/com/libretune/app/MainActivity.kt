@@ -55,13 +55,12 @@ class MainActivity : TauriActivity() {
   }
 
   override fun onWebViewCreate(webView: WebView) {
-    // LibreTune's UI is laid out for a desktop window (1024x700 minimum) and has
-    // no phone layout yet. Honour the page's fixed viewport width (index.html)
-    // so it renders as on desktop, scaled to fit, and allow pinch-zoom for the
-    // small text that results. Desktop webviews ignore the viewport tag.
+    // The Windows Phone build is laid out for the phone. index.html sets the
+    // viewport width (the "display density" setting divides it), so the wide
+    // viewport must be honoured; pinch-zoom stays off, as in a native app.
     webView.settings.useWideViewPort = true
     webView.settings.loadWithOverviewMode = true
-    webView.settings.builtInZoomControls = true
+    webView.settings.builtInZoomControls = false
     webView.settings.displayZoomControls = false
 
     // Back first walks the page's own history - a fullscreen dashboard pushes
@@ -70,9 +69,17 @@ class MainActivity : TauriActivity() {
     // exits the process with it - dropping any live ECU connection or unsaved
     // tune on one stray press. Send the app to the background instead, like
     // Home. Registered after Wry's own callback, so it takes precedence.
+    //
+    // The page is asked first (window.__metroBack, src/metro/nav.ts): the
+    // WebView's own goBack() skips history entries added without a tap, such
+    // as the page a swipe opened, and Back then left the app instead of the
+    // page. The page's own history.back() does not skip them.
     onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
       override fun handleOnBackPressed() {
-        if (webView.canGoBack()) webView.goBack() else moveTaskToBack(true)
+        webView.evaluateJavascript("(window.__metroBack ? window.__metroBack() : false)") { handled ->
+          if (handled == "true") return@evaluateJavascript
+          if (webView.canGoBack()) webView.goBack() else moveTaskToBack(true)
+        }
       }
     })
   }

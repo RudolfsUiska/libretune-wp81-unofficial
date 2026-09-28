@@ -41,14 +41,9 @@ function Root() {
     return () => window.removeEventListener('hashchange', checkHash);
   }, []);
 
-  // Show debug info while determining which component to render
+  // Blank Metro background while the hash is read (a frame at most).
   if (isPopOut === null) {
-    return (
-      <div style={{ padding: 20, color: 'white', background: '#333' }}>
-        <h2>Loading... (isPopOut = null)</h2>
-        <p>Debug: {debugInfo}</p>
-      </div>
-    );
+    return <div style={{ position: 'fixed', inset: 0, background: 'var(--wp-bg, #000)' }} data-debug={debugInfo} />;
   }
 
   // Show what we're rendering

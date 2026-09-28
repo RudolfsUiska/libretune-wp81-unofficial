@@ -12,6 +12,7 @@ export const UI_SCALES = [1, 1.5, 2] as const;
 export type UiScale = (typeof UI_SCALES)[number];
 
 const STORAGE_KEY = 'libretune.uiScale';
+const METRO_PHONE_LAYOUT = true;
 const CHANGE_EVENT = 'libretune:ui-scale';
 
 declare global {
@@ -21,6 +22,9 @@ declare global {
 }
 
 export function getUiScale(): UiScale {
+  // The Windows Phone build is laid out for a phone: the editors' compact
+  // modes (hidden title bars, icon-only toolbars, table Fit) are always on.
+  if (METRO_PHONE_LAYOUT) return 2;
   try {
     const stored = Number(localStorage.getItem(STORAGE_KEY));
     return (UI_SCALES as readonly number[]).includes(stored) ? (stored as UiScale) : 1;

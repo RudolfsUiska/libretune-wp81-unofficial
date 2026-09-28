@@ -57,11 +57,16 @@ interface LoadingOverlayProps {
 }
 
 function LoadingOverlay({ message }: LoadingOverlayProps) {
+  // Windows Phone style: flying dots along the top, the message in lowercase.
   return (
     <div className="loading-overlay" role="status" aria-live="polite">
       <div className="loading-content">
-        <div className="loading-spinner" aria-hidden="true" />
-        <div className="loading-message">{message}</div>
+        <div className="loading-dots" aria-hidden="true">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <span key={i} style={{ animationDelay: `${i * 0.12}s` }} />
+          ))}
+        </div>
+        <div className="loading-message">{message.replace(/\.\.\.$|…$/, '').toLowerCase()}…</div>
       </div>
     </div>
   );

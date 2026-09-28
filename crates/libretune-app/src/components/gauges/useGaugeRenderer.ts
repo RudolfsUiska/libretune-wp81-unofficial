@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { fitTextToCanvas } from './fitText';
 import type { TsGaugeConfig } from '../dashboards/dashTypes';
 import { useRealtimeStore } from '../../stores/realtimeStore';
 import { seedPeak, nextPeakState, type PeakState } from './peakTracking';
@@ -208,6 +209,9 @@ export function useGaugeRenderer(opts: UseGaugeRendererOptions): UseGaugeRendere
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    if (typeof CanvasRenderingContext2D !== 'undefined') {
+      fitTextToCanvas(ctx, () => canvasSizeRef.current.cssW);
+    }
 
     if (rafIdRef.current !== null) {
       cancelAnimationFrame(rafIdRef.current);

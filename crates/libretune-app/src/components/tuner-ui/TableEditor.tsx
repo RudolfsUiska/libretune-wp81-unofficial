@@ -401,7 +401,9 @@ export function TableEditor({
     }
     const fit = () => {
       reset();
-      const rect = table.getBoundingClientRect();
+      // Layout size, not getBoundingClientRect: a page transition may have
+      // the page mid-rotation, and a rotated rect would over-zoom the grid.
+      const rect = { width: table.offsetWidth, height: table.offsetHeight };
       const cs = getComputedStyle(host);
       const availW = host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
       const availH = host.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
@@ -413,10 +415,20 @@ export function TableEditor({
       const fillH = availH / zoom;
       if (fillH > rect.height + 1) table.style.height = `${fillH}px`;
     };
-    fit();
+    // Fitting can itself resize the host (a scroll bar appears or goes), and
+    // re-fitting on that feeds back forever and freezes the page. Re-fit only
+    // when the host changes size for some other reason.
+    let fittedSize = '';
+    const hostSize = () => `${host.clientWidth}x${host.clientHeight}`;
+    const refit = () => {
+      if (hostSize() === fittedSize) return;
+      fit();
+      fittedSize = hostSize();
+    };
+    refit();
     if (typeof ResizeObserver === 'undefined') return reset; // jsdom
     // Only the host is observed: fit() resizes the table itself.
-    const ro = new ResizeObserver(fit);
+    const ro = new ResizeObserver(refit);
     ro.observe(host);
     return () => {
       ro.disconnect();

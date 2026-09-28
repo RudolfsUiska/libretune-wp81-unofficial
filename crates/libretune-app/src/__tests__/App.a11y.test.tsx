@@ -95,7 +95,7 @@ describe('App accessibility smoke (axe-core)', () => {
     mockBackend(DISCONNECTED);
     const { container } = await renderApp();
     await waitForInitialized(container);
-    expect(container.querySelector('.packet-mode')?.textContent).toBe('—');
+    await waitFor(() => expect(screen.getByText('ECU disconnected')).toBeInTheDocument());
 
     await expectNoViolations(container);
   }, 15_000);
@@ -104,7 +104,7 @@ describe('App accessibility smoke (axe-core)', () => {
     mockBackend(CONNECTED);
     const { container } = await renderApp();
     await waitForInitialized(container);
-    await waitFor(() => expect(screen.getByText('Auto')).toBeInTheDocument(), { timeout: 10_000 });
+    await waitFor(() => expect(screen.getByText('ECU connected')).toBeInTheDocument(), { timeout: 10_000 });
 
     await expectNoViolations(container);
   }, 15_000);
