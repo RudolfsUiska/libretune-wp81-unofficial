@@ -1,0 +1,681 @@
+/*
+ * CYD cluster dash. Dark blue-black panel, condensed bold numerals (Android's
+ * Roboto Condensed, else the nearest narrow face), a cyan accent, and red for
+ * the red zone and the shift light. Sized in container units.
+ */
+.cyd-dash {
+  --cyd-bg: #0b0f14;
+  --cyd-panel: #121821;
+  --cyd-track: #262d37;
+  --cyd-line: #1e252e;
+  --cyd-text: #f2f4f7;
+  --cyd-dim: #8b95a3;
+  --cyd-accent: #1ec8f0;
+  --cyd-red: #ff4a4a;
+  --cyd-amber: #f5a623;
+  --cyd-green: #2bd46b;
+  --cyd-font: 'Roboto Condensed', 'sans-serif-condensed', 'Bahnschrift SemiCondensed', 'Arial Narrow', 'Open Sans',
+    sans-serif;
+
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  container-type: size;
+  overflow: hidden;
+  color: var(--cyd-text);
+  background: var(--cyd-bg);
+  font-family: var(--cyd-font);
+  font-stretch: condensed;
+  user-select: none;
+  touch-action: pan-y;
+}
+
+.cyd-dash svg {
+  overflow: visible;
+}
+
+/* ------------------------------------------------------------ top bar */
+
+.cyd-top {
+  flex: none;
+  height: max(36px, 11cqh);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 3cqw;
+  border-bottom: 1px solid var(--cyd-line);
+}
+
+.cyd-title {
+  margin: 0;
+  font-size: max(16px, min(6cqh, 4cqw));
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.cyd-icons {
+  display: flex;
+  align-items: center;
+  gap: max(8px, 1.6cqw);
+  font-size: max(14px, min(5.4cqh, 3.6cqw));
+}
+
+/* ------------------------------------------------- logging / AutoTune */
+
+.cyd-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.cyd-switches {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: max(10px, 2cqw);
+  margin: 0 max(10px, 2cqw) 0 auto;
+  font-size: max(12px, min(4.2cqh, 2.8cqw));
+}
+
+.cyd-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.3em 0.2em;
+  border: 0;
+  background: none;
+  color: var(--cyd-dim);
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cyd-switch:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.cyd-switch-track {
+  position: relative;
+  width: 2.4em;
+  height: 1.3em;
+  border-radius: 0.65em;
+  background: var(--cyd-track);
+  transition: background 0.2s;
+}
+
+.cyd-switch-knob {
+  position: absolute;
+  top: 0.15em;
+  left: 0.15em;
+  width: 1em;
+  height: 1em;
+  border-radius: 50%;
+  background: #8b95a3;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.cyd-switch.on {
+  color: var(--cyd-accent);
+}
+
+.cyd-switch.on .cyd-switch-track {
+  background: color-mix(in srgb, var(--cyd-accent) 35%, transparent);
+}
+
+.cyd-switch.on .cyd-switch-knob {
+  transform: translateX(1.1em);
+  background: var(--cyd-accent);
+}
+
+/* Recording: red, with the knob pulsing like a REC light. */
+.cyd-switch.rec.on {
+  color: var(--cyd-red);
+}
+
+.cyd-switch.rec.on .cyd-switch-track {
+  background: color-mix(in srgb, var(--cyd-red) 35%, transparent);
+}
+
+.cyd-switch.rec.on .cyd-switch-knob {
+  background: var(--cyd-red);
+  animation: cyd-rec 1s ease-in-out infinite;
+}
+
+@keyframes cyd-rec {
+  50% { box-shadow: 0 0 0 0.25em color-mix(in srgb, var(--cyd-red) 30%, transparent); }
+}
+
+.cyd-lamp {
+  width: 1.3em;
+  height: 1.3em;
+  color: var(--cyd-amber);
+}
+
+.cyd-pill {
+  padding: 0.1em 0.55em;
+  border-radius: 0.5em;
+  font-size: 0.72em;
+  letter-spacing: 0.06em;
+  color: var(--cyd-dim);
+  background: #1b222b;
+}
+
+.cyd-pill.live {
+  color: var(--cyd-accent);
+  background: color-mix(in srgb, var(--cyd-accent) 16%, transparent);
+}
+
+.cyd-net {
+  width: 1.1em;
+  height: 1.1em;
+  color: var(--cyd-dim);
+}
+
+.cyd-net.on {
+  color: var(--cyd-green);
+}
+
+.cyd-clock {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------- banner */
+
+.cyd-banner {
+  position: absolute;
+  z-index: 3;
+  top: 1.5cqh;
+  left: 3cqw;
+  right: 3cqw;
+  display: flex;
+  align-items: center;
+  gap: 2.5cqw;
+  padding: 2cqh 3cqw;
+  background: #161c25;
+  border: 1px solid #3a3320;
+  border-left: max(4px, 0.8cqw) solid var(--cyd-amber);
+  border-radius: 1.2cqh;
+  box-shadow: 0 1cqh 4cqh rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  animation: cyd-drop 0.3s ease-out both;
+}
+
+@keyframes cyd-drop {
+  from { transform: translateY(-120%); }
+}
+
+.cyd-banner-icon {
+  flex: none;
+  width: max(24px, 8cqh);
+  height: max(24px, 8cqh);
+  color: var(--cyd-amber);
+}
+
+.cyd-banner-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cyd-banner-text b {
+  font-size: max(16px, min(6cqh, 4cqw));
+}
+
+.cyd-banner-text span {
+  font-size: max(12px, min(4cqh, 2.8cqw));
+  color: var(--cyd-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* -------------------------------------------------------------- pages */
+
+.cyd-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cyd-pages {
+  display: flex;
+  height: 100%;
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.cyd-page {
+  flex: 0 0 100%;
+  height: 100%;
+  min-width: 0;
+  container-type: size;
+}
+
+.cyd-dots {
+  flex: none;
+  height: max(22px, 7cqh);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: max(10px, 1.6cqw);
+}
+
+.cyd-dots button {
+  width: max(8px, 1.8cqh);
+  height: max(8px, 1.8cqh);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #4a5361;
+  cursor: pointer;
+}
+
+.cyd-dots button.on {
+  background: var(--cyd-accent);
+}
+
+/* ------------------------------------------------------------ cluster */
+
+.cyd-cluster {
+  --g: min(98cqh, 58cqw);
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr var(--g) 1fr;
+  grid-template-rows: 1fr 1fr;
+  grid-template-areas:
+    'tl g tr'
+    'bl g br';
+  padding: 2cqh 3cqw 0;
+  box-sizing: border-box;
+}
+
+.cyd-stat {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cyd-tl { grid-area: tl; }
+.cyd-tr { grid-area: tr; }
+.cyd-bl { grid-area: bl; justify-content: flex-end; }
+.cyd-br { grid-area: br; justify-content: flex-end; }
+.cyd-bl,
+.cyd-br { padding-bottom: 5cqh; }
+
+.cyd-stat.right {
+  align-items: flex-end;
+}
+
+.cyd-stat-value {
+  font-size: min(26cqh, 9.5cqw);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cyd-stat-value small {
+  font-size: 0.42em;
+  font-weight: 400;
+  margin-left: 0.15em;
+  color: var(--cyd-dim);
+}
+
+.cyd-stat.cold .cyd-stat-value { color: var(--cyd-accent); }
+.cyd-stat.hot .cyd-stat-value { color: var(--cyd-red); }
+
+.cyd-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  margin-top: 0.4em;
+  font-size: min(7.5cqh, 3.2cqw);
+  color: var(--cyd-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.cyd-stat-label svg {
+  width: 1.1em;
+  height: 1.1em;
+  flex: none;
+}
+
+.cyd-gauge {
+  grid-area: g;
+  position: relative;
+  width: var(--g);
+  height: var(--g);
+  align-self: center;
+}
+
+.cyd-tach {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.cyd-track,
+.cyd-fill {
+  fill: none;
+  stroke-width: 16;
+}
+
+.cyd-track { stroke: var(--cyd-track); }
+
+.cyd-fill {
+  stroke: var(--cyd-accent);
+  transition: stroke 0.2s;
+}
+
+.cyd-fill.shift { stroke: var(--cyd-red); }
+
+.cyd-redzone {
+  fill: none;
+  stroke: var(--cyd-red);
+  stroke-width: 3;
+}
+
+.cyd-tick {
+  stroke: #c9d0d9;
+  stroke-width: 1.6;
+}
+
+.cyd-tick.major { stroke-width: 3.2; stroke: #fff; }
+.cyd-tick.red { stroke: var(--cyd-red); }
+
+.cyd-num {
+  fill: var(--cyd-dim);
+  font-size: 15px;
+  font-weight: 400;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.cyd-num.red { fill: var(--cyd-red); }
+
+.cyd-center {
+  fill: var(--cyd-text);
+  font-size: 78px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+  letter-spacing: -1px;
+}
+
+.cyd-center.small { font-size: 50px; }
+
+.cyd-center-unit {
+  fill: var(--cyd-dim);
+  font-size: 15px;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.cyd-gauge-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: calc(var(--g) * 0.04);
+  font-size: calc(var(--g) * 0.075);
+}
+
+.cyd-gear {
+  display: grid;
+  place-items: center;
+  width: 1.45em;
+  height: 1.45em;
+  box-sizing: border-box;
+  border: 2px solid var(--cyd-accent);
+  border-radius: 0.2em;
+  color: var(--cyd-accent);
+  font-weight: 700;
+}
+
+.cyd-gear.shift {
+  border-color: var(--cyd-red);
+  background: var(--cyd-red);
+  color: #fff;
+  animation: cyd-blink 0.5s steps(1) infinite;
+}
+
+.cyd-gear svg {
+  width: 0.9em;
+  height: 0.9em;
+}
+
+@keyframes cyd-blink {
+  50% { opacity: 0.45; }
+}
+
+.cyd-rpm {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cyd-rpm small {
+  font-size: 0.75em;
+  font-weight: 400;
+  color: var(--cyd-dim);
+  margin-left: 0.2em;
+}
+
+/* -------------------------------------------------------- ring gauges */
+
+.cyd-rings {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 3cqh 3cqw 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 2cqh 3cqw;
+}
+
+.cyd-ring {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+}
+
+.cyd-ring svg {
+  width: min(100cqw, 80cqh);
+  height: min(100cqw, 80cqh);
+}
+
+.cyd-ring .cyd-track,
+.cyd-ring .cyd-fill {
+  stroke-width: 11;
+}
+
+.cyd-ring-value {
+  fill: var(--cyd-text);
+  font-size: 30px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.cyd-ring-unit {
+  fill: var(--cyd-dim);
+  font-size: 13px;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.cyd-ring-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  font-size: min(11cqh, 9cqw);
+  color: var(--cyd-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.cyd-ring-label svg {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+/* -------------------------------------------------------- status lamps */
+
+.cyd-status {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 2.5cqh 3cqw;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.cyd-status-empty {
+  margin: 0;
+  padding-top: 20cqh;
+  text-align: center;
+  color: var(--cyd-dim);
+  font-size: max(14px, 4cqh);
+}
+
+.cyd-lamps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(130px, 22cqw), 1fr));
+  gap: max(6px, 1.4cqh) max(6px, 1.2cqw);
+}
+
+.cyd-lamp-tile {
+  --lamp: var(--cyd-accent);
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  min-height: max(40px, 11cqh);
+  padding: 0.5em 0.8em;
+  box-sizing: border-box;
+  border: 1px solid var(--cyd-line);
+  border-radius: 0.5em;
+  background: var(--cyd-panel);
+  color: var(--cyd-dim);
+  font-size: max(13px, min(4.4cqh, 2.4cqw));
+  line-height: 1.15;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.cyd-lamp-dot {
+  flex: none;
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 50%;
+  background: var(--cyd-track);
+}
+
+.cyd-lamp-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cyd-lamp-tile.on {
+  color: var(--cyd-text);
+  border-color: var(--lamp);
+  background: color-mix(in srgb, var(--lamp) 16%, var(--cyd-panel));
+}
+
+.cyd-lamp-tile.on .cyd-lamp-dot {
+  background: var(--lamp);
+  box-shadow: 0 0 0.6em var(--lamp);
+}
+
+.cyd-lamp-tile.alarm {
+  font-weight: 700;
+  animation: cyd-lamp-alarm 1s ease-in-out infinite alternate;
+}
+
+@keyframes cyd-lamp-alarm {
+  to {
+    background: color-mix(in srgb, var(--lamp) 34%, var(--cyd-panel));
+  }
+}
+
+/* ----------------------------------------------------------- portrait */
+
+@container (max-aspect-ratio: 1/1) {
+  .cyd-cluster {
+    --g: min(94cqw, 62cqh);
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: var(--g) 1fr 1fr;
+    grid-template-areas:
+      'g g'
+      'tl tr'
+      'bl br';
+    row-gap: 2cqh;
+    padding: 1cqh 5cqw 0;
+  }
+
+  .cyd-gauge { justify-self: center; }
+
+  .cyd-top { height: max(40px, 7cqh); padding: 0 5cqw; }
+  .cyd-title { font-size: min(3.2cqh, 7cqw); }
+  .cyd-icons { font-size: min(2.6cqh, 5.4cqw); }
+  /* Narrow bar: the network icon already shows the link, drop the pill. */
+  .cyd-pill { display: none; }
+  /* Title and status on the first row, the switches on their own below it. */
+  .cyd-top { flex-wrap: wrap; height: auto; row-gap: 1cqh; padding-top: 1.2cqh; padding-bottom: 1.2cqh; }
+  .cyd-switches {
+    order: 2;
+    width: 100%;
+    margin: 0;
+    justify-content: space-between;
+    font-size: min(2.1cqh, 4.2cqw);
+  }
+  .cyd-banner { top: 1cqh; padding: 1.4cqh 4cqw; border-radius: 1cqh; }
+  .cyd-banner-icon { width: 5cqh; height: 5cqh; }
+  .cyd-banner-text b { font-size: min(2.8cqh, 6cqw); }
+  .cyd-banner-text span { font-size: min(1.9cqh, 4cqw); }
+  .cyd-dots { height: 5cqh; }
+
+  .cyd-bl,
+  .cyd-br { justify-content: flex-start; }
+
+  .cyd-stat-value { font-size: min(10cqh, 17cqw); }
+  .cyd-stat-label { font-size: min(3.2cqh, 5.6cqw); }
+
+  .cyd-rings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+  }
+
+  .cyd-lamps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cyd-lamp-tile { font-size: max(13px, min(2.2cqh, 4.2cqw)); min-height: max(40px, 6cqh); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cyd-pages { transition: none; }
+  .cyd-banner,
+  .cyd-gear.shift,
+  .cyd-switch.rec.on .cyd-switch-knob,
+  .cyd-lamp-tile.alarm { animation: none; }
+}

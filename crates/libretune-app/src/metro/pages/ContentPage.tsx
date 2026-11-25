@@ -6,6 +6,8 @@ import { pageTitle, useMetro } from '../context';
 import { nav } from '../nav';
 import { isPinned, pinToStart } from '../startLayout';
 import { Flame, Glyph, Layers, Save } from '../icons';
+import { canSnapshot, captureTab } from '../snapshots';
+import { markShown } from '../recentPages';
 
 /**
  * A page hosting one open tab's editor (table, curve, dialog, dashboard...).
@@ -40,6 +42,25 @@ export function ContentPage({ tabId }: { tabId: string }) {
     return () => clearTimeout(t);
   }, []);
   const showing = turned && m.activeTabId === tabId;
+  useEffect(() => {
+    if (m.activeTabId === tabId) markShown(tabId);
+  }, [m.activeTabId, tabId]);
+
+  // A picture of this page for the switcher: once it has drawn, then now and
+  // then while it stays open (dashboards change), and just before "pages".
+  useEffect(() => {
+    if (!showing || !canSnapshot()) return;
+    const first = setTimeout(() => void captureTab(tabId), 1200);
+    const every = setInterval(() => void captureTab(tabId), 20_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(every);
+    };
+  }, [showing, tabId]);
+  const openPages = async () => {
+    if (showing) await captureTab(tabId);
+    nav.push({ kind: 'tasks' });
+  };
 
   if (!tab) return <div className="wp-page" />;
 
@@ -77,7 +98,7 @@ export function ContentPage({ tabId }: { tabId: string }) {
             },
             { id: 'save', icon: <Glyph icon={Save} size={20} />, label: 'save', onClick: m.actions.saveTune },
             { id: 'full', icon: <Maximize size={20} strokeWidth={1.5} />, label: 'full screen', onClick: fs.enter },
-            { id: 'pages', icon: <Glyph icon={Layers} size={20} />, label: 'pages', onClick: () => nav.push({ kind: 'tasks' }) },
+            { id: 'pages', icon: <Glyph icon={Layers} size={20} />, label: 'pages', onClick: () => void openPages() },
           ]}
           menu={[
             {

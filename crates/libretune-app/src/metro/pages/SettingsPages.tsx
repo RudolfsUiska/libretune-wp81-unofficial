@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { Settings as SettingsIcon } from 'lucide-react';
+import { iconForLabel } from '../itemIcons';
 import { useToast } from '../../contexts/ToastContext';
 import { openDashboardsFullscreen, openTabsFullscreen } from '../../utils/viewFullscreen';
 import { ListItem, ListPicker, MessageBox, PageHeader, ToggleSwitch } from '../controls';
@@ -26,6 +28,12 @@ import {
   type WallpaperChoice,
 } from '../wallpaper';
 
+/** A list row's icon, from the shared label map (metro/itemIcons.ts). */
+function rowIcon(title: string) {
+  const Icon = iconForLabel(title, SettingsIcon);
+  return <Icon size={22} strokeWidth={1.4} aria-hidden />;
+}
+
 export function SettingsPage() {
   const m = useMetro();
   const prefs = useMetroPrefs();
@@ -39,13 +47,13 @@ export function SettingsPage() {
       <PageHeader title="settings" />
       <div className="wp-scroll">
         <div className="wp-group-header">system</div>
-        <ListItem title="start+theme" subtitle={`${THEME_LOOK[prefs.background].label} · ${prefs.accent === 'theme' ? 'theme accent' : prefs.accent}`} onClick={() => nav.push({ kind: 'theme' })} />
+        <ListItem icon={rowIcon("start+theme")} title="start+theme" subtitle={`${THEME_LOOK[prefs.background].label} · ${prefs.accent === 'theme' ? 'theme accent' : prefs.accent}`} onClick={() => nav.push({ kind: 'theme' })} />
         <ListItem
-          title="connection"
+          icon={rowIcon("connection")} title="connection"
           subtitle={m.connected ? `connected · ${m.status.signature ?? ''}` : 'disconnected'}
           onClick={() => nav.push({ kind: 'connect' })}
         />
-        <ListItem title="projects" subtitle={m.currentProject?.name ?? 'no project open'} onClick={() => nav.push({ kind: 'projects' })} />
+        <ListItem icon={rowIcon("projects")} title="projects" subtitle={m.currentProject?.name ?? 'no project open'} onClick={() => nav.push({ kind: 'projects' })} />
 
         <div className="wp-group-header">display</div>
         <div className="wp-form">
@@ -66,10 +74,10 @@ export function SettingsPage() {
         </div>
 
         <div className="wp-group-header">tuning software</div>
-        <ListItem title="all settings" subtitle="units, logging, gauges, language, hotkeys" onClick={m.actions.advancedSettings} />
-        <ListItem title="user manual" onClick={m.actions.manual} />
-        <ListItem title="about" subtitle="LibreTune, GPL-2.0" onClick={m.actions.about} />
-        <ListItem title="reset start screen" subtitle="default tiles; removes pinned pages" onClick={() => setConfirmReset(true)} />
+        <ListItem icon={rowIcon("all settings")} title="all settings" subtitle="units, logging, gauges, language, hotkeys" onClick={m.actions.advancedSettings} />
+        <ListItem icon={rowIcon("user manual")} title="user manual" onClick={m.actions.manual} />
+        <ListItem icon={rowIcon("about")} title="about" subtitle="LibreTune, GPL-2.0" onClick={m.actions.about} />
+        <ListItem icon={rowIcon("reset start screen")} title="reset start screen" subtitle="default tiles; removes pinned pages" onClick={() => setConfirmReset(true)} />
       </div>
       <MessageBox
         open={confirmReset}

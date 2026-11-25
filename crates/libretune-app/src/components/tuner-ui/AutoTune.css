@@ -26,12 +26,18 @@
   padding: 12px 16px;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border-default);
+  /* Narrow screens (a phone in portrait): the action buttons drop to their
+     own line instead of running off the right edge. */
+  flex-wrap: wrap;
+  gap: 8px 12px;
 }
 
 .autotune-title-row {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .autotune-table-selectors {
@@ -124,6 +130,7 @@
 .autotune-controls {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .autotune-controls button {
@@ -143,6 +150,12 @@
 .autotune-controls button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.autotune-controls .autotune-live-btn.active {
+  background: var(--warning, #d97706);
+  border-color: var(--warning, #d97706);
+  color: white;
 }
 
 .autotune-start {
@@ -190,6 +203,7 @@
   background: var(--bg-subtle);
   border-bottom: 1px solid var(--border-default);
   font-size: 13px;
+  flex-wrap: wrap;
 }
 
 .autotune-table-toolbar select {
@@ -210,10 +224,40 @@
   font-size: 12px;
 }
 
+.autotune-table-toolbar button.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
 .autotune-table-container {
+  position: relative; /* trail overlay anchors here (content-space) */
   flex: 1;
   overflow: auto;
   padding: 12px;
+}
+
+/* Live zoom: the sticky axis headers pin to the container's edges, so the
+   padding would leave a strip where cells show past the headers. */
+.autotune-table-container-live-zoom {
+  padding: 0;
+}
+
+/* Fit and live zoom size the table from a measurement taken the moment the
+   mode changes. The cells' `transition: all` would still be animating their
+   padding then, and the zoom would be computed from a half-way size. */
+.autotune-table-container-live-zoom .autotune-table th,
+.autotune-table-container-live-zoom .autotune-table td {
+  transition: none;
+}
+
+/* Fit: cells shed padding and minimum width so the zoom that shows the
+   whole table can be as large as possible. */
+.autotune-table-container-fit .autotune-table th,
+.autotune-table-container-fit .autotune-table td {
+  min-width: 0;
+  padding: 0 3px;
+  line-height: 1.15;
 }
 
 /* Table */
@@ -243,6 +287,14 @@
   z-index: 2;
 }
 
+/* Flipped view: the X-axis header moves to the table's foot (issue #132
+   follow-up), so it sticks to the bottom edge the way the default header
+   sticks to the top. */
+.autotune-table tfoot th {
+  bottom: 0;
+  z-index: 2;
+}
+
 .autotune-table tbody th {
   left: 0;
   z-index: 1;
@@ -254,6 +306,12 @@
   left: 0;
   z-index: 3;
   background: var(--bg-subtle);
+}
+
+/* Flipped view: the corner sits in the foot row and pins to the bottom. */
+.autotune-table tfoot .autotune-corner {
+  top: auto;
+  bottom: 0;
 }
 
 /* Cell styles */
@@ -366,14 +424,156 @@
 
 /* Same "config panel beside main content, stacks below it when narrow"
    pattern already used by PortEditor.css's .assignments-panel. */
-@media (max-width: 768px) {
+/* Shown only on narrow screens (below). */
+.autotune-narrow-tabs {
+  display: none;
+}
+
+/* A phone in portrait. The grid is the point of this view, so it gets the
+   screen: the header shrinks to a couple of compact rows, and the side panel
+   (statistics, tune health, filters, limits) moves behind a tab instead of
+   squeezing the grid to a sliver. The `html` prefix outranks the touch-sized
+   control rules of the phone skin. Also applies to a short screen (the
+   same phone in landscape), where height is what runs out. */
+@media (max-width: 768px), (max-height: 500px) {
+  .autotune-header {
+    flex-shrink: 0;
+    padding: 4px 8px;
+    gap: 4px 8px;
+  }
+
+  .autotune-title-row {
+    gap: 4px 8px;
+  }
+
+  /* The page already carries the title; keep only the status badge. */
+  .autotune-header h2 {
+    font-size: 0;
+    gap: 0;
+  }
+
+  .autotune-header h2 .autotune-disconnected-badge {
+    font-size: 10px;
+  }
+
+  .autotune-table-selectors {
+    gap: 4px 8px;
+  }
+
+  html .autotune .autotune-header select,
+  html .autotune .autotune-table-toolbar select {
+    min-height: 26px !important;
+    height: 26px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: 6px !important;
+    font-size: 12px !important;
+    max-width: 130px;
+  }
+
+  .autotune-table-group {
+    font-size: 11px;
+    gap: 4px;
+  }
+
+  /* One wrapping line for badge, selectors and buttons instead of a row
+     each. */
+  .autotune-title-row,
+  .autotune-table-selectors {
+    display: contents;
+  }
+
+  .autotune-header {
+    justify-content: flex-start;
+    align-items: center;
+  }
+
+  /* A selector with nothing to choose (no second fuel table, so no view to
+     switch either) only costs a row here. */
+  .autotune-table-group:has(select:disabled) > select,
+  .autotune-table-group:has(select:disabled) > label:not(.autotune-secondary-toggle) {
+    display: none;
+  }
+
+  /* ...but the checkbox that enables the second table stays: ticking it is
+     what brings the Secondary and View pickers back. */
+  .autotune-table-group:has(select:disabled):not(:has(.autotune-secondary-toggle)) {
+    display: none;
+  }
+
+  /* Icon-only: the reference-table buttons are the least used here. */
+  html .autotune .autotune-controls .autotune-ref-btn {
+    font-size: 0;
+    gap: 0;
+  }
+
+  /* The select says what it is. */
+  .autotune-table-toolbar > span:first-child {
+    display: none;
+  }
+
+  html .autotune .autotune-controls button,
+  html .autotune .autotune-table-toolbar button {
+    min-height: 26px;
+    height: 26px;
+    padding: 0 8px;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .autotune-controls {
+    gap: 4px;
+  }
+
+  .autotune-table-toolbar {
+    padding: 4px 8px;
+    gap: 4px 6px;
+    font-size: 12px;
+  }
+
+  .autotune-legend {
+    padding: 2px 8px;
+  }
+
+  .autotune-narrow-tabs {
+    display: flex;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .autotune-narrow-tabs button {
+    flex: 1;
+    padding: 3px 8px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .autotune-narrow-tabs button.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--primary);
+  }
+
   .autotune-content {
     flex-direction: column;
   }
 
+  .autotune-table-panel {
+    border-right: none;
+  }
+
   .autotune-settings-panel {
     width: 100%;
-    max-height: 40vh;
+    flex: 1;
+  }
+
+  .autotune-content--table .autotune-settings-panel,
+  .autotune-content--setup .autotune-table-panel {
+    display: none;
   }
 }
 

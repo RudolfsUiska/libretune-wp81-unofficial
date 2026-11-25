@@ -1,0 +1,494 @@
+/*
+ * Zune engine dash. Black, Segoe/Zegoe-style light lowercase type (Open Sans
+ * is the bundled stand-in), the Zune magenta-to-orange, and grey for whatever
+ * isn't selected. Sized in container units so it fills the dashboard area;
+ * the art sits left of the list in landscape and above it in portrait.
+ */
+.zn-dash {
+  --zn-font: 'Zegoe UI', 'Segoe UI', 'Segoe WP', 'Open Sans', system-ui, sans-serif;
+  --zn-magenta: #ec008c;
+  --zn-orange: #f47b20;
+  --zn-red: #e51400;
+  --zn-grey: #5c5c5c;
+  --zn-dim: #9a9a9a;
+  --zn-art-from: var(--zn-magenta);
+  --zn-art-to: var(--zn-orange);
+
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  container-type: size;
+  overflow: hidden;
+  color: #fff;
+  font-family: var(--zn-font);
+  user-select: none;
+  background:
+    radial-gradient(70cqmax 50cqmax at -10% 115%, rgba(236, 0, 140, 0.16), transparent 70%),
+    radial-gradient(50cqmax 40cqmax at 110% -10%, rgba(244, 123, 32, 0.08), transparent 70%),
+    #000;
+}
+
+.zn-dash.zn-caution {
+  --zn-art-from: var(--zn-orange);
+  --zn-art-to: #f0a30a;
+}
+
+.zn-dash.zn-alert {
+  --zn-art-from: var(--zn-red);
+  --zn-art-to: #a20025;
+}
+
+.zn-dash button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Sizes live on the children: a container query can't restyle the container. */
+.zn-top,
+.zn-pivot,
+.zn-body,
+.zn-progress {
+  --pad-x: 4cqw;
+  --art: min(60cqh, 42cqw);
+  position: relative;
+  padding-left: var(--pad-x);
+  padding-right: var(--pad-x);
+}
+
+/* ---------------------------------------------- the drifting backdrop */
+
+/* The Zune HD drew the artist's name huge and faint, sliding slowly across. */
+.zn-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+
+.zn-backdrop span {
+  display: block;
+  padding-left: 6cqw;
+  font-size: 62cqh;
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.055);
+  font-variant-numeric: tabular-nums;
+  animation: zn-drift 38s linear infinite alternate;
+}
+
+@keyframes zn-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(-45%); }
+}
+
+/* --------------------------------------------------------- status bar */
+
+.zn-top {
+  flex: none;
+  height: 7cqh;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  font-size: min(3cqh, 2.4cqw);
+  color: var(--zn-dim);
+  text-transform: lowercase;
+}
+
+.zn-brand {
+  letter-spacing: 0.02em;
+}
+
+.zn-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+}
+
+.zn-link {
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  border: 1px solid var(--zn-dim);
+}
+
+.zn-link.on {
+  background: var(--zn-magenta);
+  border-color: var(--zn-magenta);
+}
+
+.zn-clock {
+  margin-left: 0.6em;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------------- pivot */
+
+.zn-pivot {
+  flex: none;
+  height: 17cqh;
+  overflow: hidden;
+  padding-right: 0;
+  /* the words run straight off the right edge */
+}
+
+.zn-pivot-track {
+  display: flex;
+  align-items: baseline;
+  gap: 0.32em;
+  height: 100%;
+  font-size: 14cqh;
+  font-weight: 300;
+  line-height: 1.15;
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+  margin-left: -0.06em;
+  animation: zn-pivot-in 0.45s cubic-bezier(0.1, 0.9, 0.2, 1) both;
+}
+
+@keyframes zn-pivot-in {
+  from { transform: translateX(18cqw); opacity: 0.2; }
+}
+
+.zn-pivot-item {
+  flex: none;
+  color: var(--zn-grey) !important;
+  transition: color 0.2s;
+}
+
+.zn-pivot-item.current {
+  color: #fff !important;
+}
+
+.zn-pivot-item:not(.current):active {
+  color: var(--zn-dim) !important;
+}
+
+/* ------------------------------------------------------- art and meta */
+
+.zn-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 4cqw;
+  padding-top: 2cqh;
+}
+
+.zn-art {
+  position: relative;
+  flex: none;
+  width: var(--art);
+  height: var(--art);
+  container-type: size;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 7cqmin;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, var(--zn-art-from), var(--zn-art-to));
+  transition: background 0.4s;
+  animation: zn-art-in 0.5s cubic-bezier(0.1, 0.9, 0.2, 1) both;
+}
+
+/* A soft sheen, like the Zune's glossy art frames. */
+.zn-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.16), transparent 45%);
+  pointer-events: none;
+}
+
+@keyframes zn-art-in {
+  from { transform: scale(0.94); opacity: 0; }
+}
+
+.zn-art-value {
+  position: relative;
+  font-size: 30cqmin;
+  font-weight: 300;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.zn-art-unit {
+  position: relative;
+  font-size: 9cqmin;
+  font-weight: 300;
+  opacity: 0.85;
+  margin-top: 1.5cqmin;
+}
+
+.zn-history {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.zn-history polygon {
+  fill: rgba(0, 0, 0, 0.14);
+}
+
+.zn-history polyline {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.5);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.zn-meta {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: var(--art);
+  display: flex;
+  flex-direction: column;
+}
+
+.zn-eyebrow {
+  font-size: min(3cqh, 2.4cqw);
+  color: var(--zn-magenta);
+  text-transform: lowercase;
+}
+
+.zn-title {
+  font-size: min(7cqh, 5cqw);
+  font-weight: 300;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zn-sub {
+  font-size: min(3.2cqh, 2.6cqw);
+  color: var(--zn-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zn-sub.alert {
+  color: #ff4f6e;
+}
+
+.zn-list {
+  flex: 1;
+  min-height: 0;
+  list-style: none;
+  margin: 2.2cqh 0 0;
+  padding: 0;
+  display: grid;
+  grid-auto-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.zn-list li {
+  min-height: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.zn-row {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+  font-size: min(3.6cqh, 2.6cqw);
+  text-align: left;
+}
+
+button.zn-row:active {
+  background: rgba(236, 0, 140, 0.18);
+}
+
+.zn-row-label {
+  color: var(--zn-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zn-row-value {
+  flex: none;
+  font-weight: 300;
+  font-size: 1.15em;
+  font-variant-numeric: tabular-nums;
+}
+
+.zn-row-value small {
+  font-size: 0.62em;
+  color: var(--zn-dim);
+  margin-left: 0.3em;
+}
+
+.zn-row-caution .zn-row-value {
+  color: var(--zn-orange);
+}
+
+.zn-row-alert .zn-row-label,
+.zn-row-alert .zn-row-value {
+  color: #ff4f6e;
+}
+
+.zn-row-extra .zn-row-label {
+  color: var(--zn-grey);
+}
+
+/* ----------------------------------------------------------- progress */
+
+.zn-progress {
+  flex: none;
+  height: 11cqh;
+  display: flex;
+  align-items: center;
+  gap: 2cqw;
+  font-size: min(3cqh, 2.4cqw);
+  color: var(--zn-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.zn-end {
+  flex: none;
+  min-width: 3em;
+}
+
+.zn-end:last-child {
+  text-align: right;
+}
+
+.zn-line {
+  position: relative;
+  flex: 1;
+  height: max(2px, 0.6cqh);
+  background: #333;
+}
+
+.zn-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, var(--zn-magenta), var(--zn-orange));
+  transition: width 0.25s;
+}
+
+.zn-alert .zn-fill {
+  background: var(--zn-red);
+}
+
+.zn-red {
+  position: absolute;
+  top: -150%;
+  bottom: -150%;
+  width: 2px;
+  background: var(--zn-red);
+}
+
+.zn-thumb {
+  position: absolute;
+  top: 50%;
+  width: max(8px, 2cqh);
+  height: max(8px, 2cqh);
+  border-radius: 50%;
+  background: #fff;
+  transform: translate(-50%, -50%);
+  transition: left 0.25s;
+}
+
+/* ----------------------------------------------------------- portrait */
+
+@container (max-aspect-ratio: 1/1) {
+  .zn-top,
+  .zn-pivot,
+  .zn-body,
+  .zn-progress {
+    --pad-x: 5cqw;
+    --art: min(90cqw, 40cqh);
+  }
+
+  .zn-top {
+    height: 5cqh;
+    font-size: min(1.8cqh, 3.4cqw);
+  }
+
+  .zn-pivot {
+    height: 10cqh;
+  }
+
+  .zn-pivot-track {
+    font-size: min(8cqh, 15cqw);
+  }
+
+  .zn-body {
+    flex-direction: column;
+    gap: 2.5cqh;
+  }
+
+  .zn-art {
+    align-self: flex-start;
+  }
+
+  .zn-meta {
+    height: auto;
+    flex: 1;
+  }
+
+  .zn-eyebrow {
+    font-size: min(1.8cqh, 3.4cqw);
+  }
+
+  .zn-title {
+    font-size: min(4cqh, 7.5cqw);
+  }
+
+  .zn-sub {
+    font-size: min(1.9cqh, 3.6cqw);
+  }
+
+  .zn-list {
+    margin-top: 1.2cqh;
+  }
+
+  .zn-row {
+    font-size: min(2.1cqh, 4cqw);
+  }
+
+  .zn-progress {
+    height: 7cqh;
+    font-size: min(1.8cqh, 3.4cqw);
+  }
+
+  .zn-backdrop span {
+    font-size: 40cqh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zn-backdrop span,
+  .zn-pivot-track,
+  .zn-art {
+    animation: none;
+  }
+}

@@ -4,8 +4,12 @@
  * Samuel Breznjak); the checkbox tick and close glyph are redrawn in its style.
  * Sizes use container units so the window fills whatever space it gets.
  */
-/* The original pixel font (ArialPixel, from ekmas/cs16.css) is not bundled:
-   its licence is undocumented. Install it on the device to get the exact look. */
+@font-face {
+  font-family: 'ArialPixel';
+  src: url('./assets/ArialPixel.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
 
 .cs16-dash {
   --bg: #4a5942;

@@ -281,6 +281,7 @@ fn dialog_definition_or_table(
                 name: name.to_string(),
             }],
             layout_hint: None,
+            topic_help: None,
         });
     }
     None
@@ -367,6 +368,8 @@ fn decode_curves(
                     y_bins,
                     x_label: curve.column_labels.0.clone(),
                     y_label: curve.column_labels.1.clone(),
+                    x_digits: x_const.digits,
+                    y_digits: y_const.digits,
                     x_axis: curve.x_axis,
                     y_axis: curve.y_axis,
                     x_output_channel: curve.x_output_channel.clone(),
@@ -595,6 +598,7 @@ mod tests {
                     enabled_condition: None,
                 }],
                 layout_hint: None,
+                topic_help: None,
             },
         );
         def.menus.push(Menu {

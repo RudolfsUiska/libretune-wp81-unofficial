@@ -17,8 +17,9 @@ use super::{
         DialogComponent, DialogDefinition, EcuType, FTPBrowserConfig, FilterOperator,
         FrontPageConfig, FrontPageIndicator, GammaEConfig, HelpTopic, IndicatorDefinition,
         IndicatorPanel, KeyAction, LoggerDefinition, MaintainConstantValue, Menu, MenuItem,
-        PortEditorConfig, ReadoutDefinition, ReadoutPanel, ReferenceTable, SettingGroup,
-        SettingOption, Shape, ThermistorOption, VeAnalyzeConfig, WueAnalyzeConfig,
+        PortEditorConfig, ReadoutDefinition, ReadoutPanel, ReferenceTable, SettingAssignment,
+        SettingGroup, SettingOption, SettingSelectorOption, Shape, ThermistorOption,
+        VeAnalyzeConfig, WueAnalyzeConfig,
     },
     EcuDefinition, IniError,
 };
@@ -1840,6 +1841,29 @@ fn parse_table_editor_entry(
                         table.y_label = Some(parts[1].trim_matches('"').to_string());
                     }
                 }
+                "gridorient" => {
+                    // Format: gridOrient = yaw, pitch, roll (e.g. "250, 0, 340")
+                    let parts: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
+                    if parts.len() >= 3 {
+                        if let (Ok(a), Ok(b), Ok(c)) = (
+                            parts[0].parse::<f32>(),
+                            parts[1].parse::<f32>(),
+                            parts[2].parse::<f32>(),
+                        ) {
+                            table.grid_orient = Some((a, b, c));
+                        }
+                    }
+                }
+                "updownlabel" => {
+                    // Format: upDownLabel = "UpLabel", "DownLabel" (3D view)
+                    let parts = split_ini_line(value);
+                    if !parts.is_empty() {
+                        table.up_label = Some(parts[0].trim_matches('"').to_string());
+                    }
+                    if parts.len() >= 2 {
+                        table.down_label = Some(parts[1].trim_matches('"').to_string());
+                    }
+                }
                 _ => {}
             }
         }
@@ -1933,6 +1957,14 @@ fn parse_curve_editor_entry(
                 "gauge" => {
                     // Format: gauge = GaugeName
                     curve.gauge = Some(value.trim().to_string());
+                }
+                "linelabel" => {
+                    // Format: lineLabel = "Label" — legend label for each
+                    // overlaid curve line (e.g. WUE analyzer's "Current WUE"
+                    // / "Recommended WUE"). Repeated lines append in order.
+                    curve
+                        .line_labels
+                        .push(value.trim().trim_matches('"').to_string());
                 }
                 _ => {}
             }
@@ -2529,6 +2561,17 @@ fn parse_user_defined_entry(
                 }
             }
         }
+        "topichelp" => {
+            // Dialog context: topicHelp = "https://…" attaches a help URL to
+            // the dialog being defined (TunerStudio renders it as a help
+            // link). In [TableEditor]/[CurveEditor]/[ReferenceTables] the
+            // same key is handled by their own parsers.
+            if let Some(name) = current_dialog {
+                if let Some(dialog) = def.dialogs.get_mut(name) {
+                    dialog.topic_help = Some(value.trim().trim_matches('"').to_string());
+                }
+            }
+        }
         "dialog" => {
             let parts = split_ini_line(value);
             if !parts.is_empty() {
@@ -2552,6 +2595,7 @@ fn parse_user_defined_entry(
                     title,
                     components: Vec::new(),
                     layout_hint,
+                    topic_help: None,
                 };
                 def.dialogs.insert(name.clone(), dialog);
                 *current_dialog = Some(name);
@@ -2842,6 +2886,179 @@ fn parse_user_defined_entry(
                 }
             }
         }
+        "checkbox" => {
+            // Format: checkbox = "Label", name [, flipValue] [, {visibility}, {enable}]
+            // A bare `flipValue` token inverts the sense of the checkbox
+            // (checked ⇄ 0 instead of checked ⇄ non-zero). Brace conditions
+            // follow the same split as `field`: two braces are
+            // visibility+enable, a single brace is enable-only (greyed out,
+            // not hidden) — the dual-checkbox pattern from issue #338 relies
+            // on the enable-only reading.
+            if let Some(name) = current_dialog {
+                if let Some(dialog) = def.dialogs.get_mut(name) {
+                    let parts = split_ini_line(value);
+                    if parts.len() >= 2 {
+                        let label = parts[0].trim_matches('"').to_string();
+                        let field_name = parts[1].trim().to_string();
+
+                        let mut flip_value = false;
+                        let mut conditions: Vec<String> = Vec::new();
+                        for part in parts.iter().skip(2) {
+                            let trimmed = part.trim();
+                            if trimmed.starts_with('{') && trimmed.ends_with('}') {
+                                conditions.push(
+                                    trimmed
+                                        .trim_matches(|c| c == '{' || c == '}')
+                                        .trim()
+                                        .to_string(),
+                                );
+                            } else if trimmed.eq_ignore_ascii_case("flipvalue") {
+                                flip_value = true;
+                            }
+                        }
+
+                        let visibility_condition = if conditions.len() >= 2 {
+                            Some(conditions[0].clone())
+                        } else {
+                            None
+                        };
+
+                        let enabled_condition = if conditions.len() >= 2 {
+                            Some(conditions[1].clone())
+                        } else if conditions.len() == 1 {
+                            Some(conditions[0].clone())
+                        } else {
+                            None
+                        };
+
+                        dialog.components.push(DialogComponent::Checkbox {
+                            label,
+                            name: field_name,
+                            flip_value,
+                            visibility_condition,
+                            enabled_condition,
+                        });
+                    }
+                }
+            }
+        }
+        "slider" => {
+            // Format: slider = "Label", name [, horizontal|vertical] [, {visibility}, {enable}]
+            // The orientation token is optional (lowercased when captured).
+            // Any other bare token (e.g. legacy outputChannel refs) is
+            // ignored leniently, matching the parser's recovery strategy.
+            if let Some(name) = current_dialog {
+                if let Some(dialog) = def.dialogs.get_mut(name) {
+                    let parts = split_ini_line(value);
+                    if parts.len() >= 2 {
+                        let label = parts[0].trim_matches('"').to_string();
+                        let field_name = parts[1].trim().to_string();
+
+                        let mut orientation: Option<String> = None;
+                        let mut conditions: Vec<String> = Vec::new();
+                        for part in parts.iter().skip(2) {
+                            let trimmed = part.trim();
+                            if trimmed.starts_with('{') && trimmed.ends_with('}') {
+                                conditions.push(
+                                    trimmed
+                                        .trim_matches(|c| c == '{' || c == '}')
+                                        .trim()
+                                        .to_string(),
+                                );
+                            } else {
+                                let lower = trimmed.to_lowercase();
+                                if lower == "horizontal" || lower == "vertical" {
+                                    orientation = Some(lower);
+                                }
+                            }
+                        }
+
+                        let visibility_condition = if conditions.len() >= 2 {
+                            Some(conditions[0].clone())
+                        } else {
+                            None
+                        };
+
+                        let enabled_condition = if conditions.len() >= 2 {
+                            Some(conditions[1].clone())
+                        } else if conditions.len() == 1 {
+                            Some(conditions[0].clone())
+                        } else {
+                            None
+                        };
+
+                        dialog.components.push(DialogComponent::Slider {
+                            label,
+                            name: field_name,
+                            orientation,
+                            visibility_condition,
+                            enabled_condition,
+                        });
+                    }
+                }
+            }
+        }
+        "displayonlyfield" => {
+            // Format: displayOnlyField = [!|#]"Label" [, name] [, {visibility}, {enable}]
+            // The constant is optional: `blankfield` (or no second token) marks
+            // a text-only line. Empty braces `{}` are trivial conditions and
+            // are dropped, matching TunerStudio semantics.
+            if let Some(name) = current_dialog {
+                if let Some(dialog) = def.dialogs.get_mut(name) {
+                    let parts = split_ini_line(value);
+                    if !parts.is_empty() {
+                        let label = parts[0].trim().trim_matches('"').to_string();
+
+                        let field_name = parts.get(1).map(|p| p.trim().to_string()).filter(|p| {
+                            !p.is_empty()
+                                && p != "blankfield"
+                                && !(p.starts_with('{') && p.ends_with('}'))
+                        });
+
+                        let conditions: Vec<String> = parts
+                            .iter()
+                            .skip(if parts.len() > 1 && field_name.is_some() {
+                                2
+                            } else {
+                                1
+                            })
+                            .filter_map(|p| {
+                                let trimmed = p.trim();
+                                if trimmed.starts_with('{') && trimmed.ends_with('}') {
+                                    let inner = trimmed
+                                        .trim_matches(|c| c == '{' || c == '}')
+                                        .trim()
+                                        .to_string();
+                                    (!inner.is_empty()).then_some(inner)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        let visibility_condition = if conditions.len() >= 2 {
+                            Some(conditions[0].clone())
+                        } else {
+                            None
+                        };
+                        let enabled_condition = if conditions.len() >= 2 {
+                            Some(conditions[1].clone())
+                        } else if conditions.len() == 1 {
+                            Some(conditions[0].clone())
+                        } else {
+                            None
+                        };
+
+                        dialog.components.push(DialogComponent::DisplayOnlyField {
+                            label,
+                            name: field_name,
+                            visibility_condition,
+                            enabled_condition,
+                        });
+                    }
+                }
+            }
+        }
         "table" => {
             if let Some(name) = current_dialog {
                 if let Some(dialog) = def.dialogs.get_mut(name) {
@@ -2937,6 +3154,76 @@ fn parse_user_defined_entry(
                             enabled_condition,
                             on_close_behavior,
                         });
+                    }
+                }
+            }
+        }
+        "settingselector" => {
+            // Format: settingSelector = "Label" [, {visibility condition}]
+            // Followed by indented `settingOption` lines belonging to it.
+            if let Some(name) = current_dialog {
+                if let Some(dialog) = def.dialogs.get_mut(name) {
+                    let parts = split_ini_line(value);
+                    if !parts.is_empty() {
+                        let label = parts[0].trim().trim_matches('"').to_string();
+                        let visibility_condition = parts
+                            .iter()
+                            .skip(1)
+                            .find(|p| p.trim().starts_with('{'))
+                            .map(|p| p.trim().trim_matches(|c| c == '{' || c == '}').to_string());
+                        dialog.components.push(DialogComponent::SettingSelector {
+                            label,
+                            options: Vec::new(),
+                            visibility_condition,
+                        });
+                    }
+                }
+            }
+        }
+        "settingoption" => {
+            // Format: settingOption = "Label", constName=value [, constName=value...]
+            // Only valid in a dialog when it immediately follows a
+            // `settingSelector` line — the `[SettingGroups]` `settingOption` is
+            // handled separately in `parse_setting_group_entry`.
+            if let Some(name) = current_dialog {
+                if let Some(dialog) = def.dialogs.get_mut(name) {
+                    let selector_open = matches!(
+                        dialog.components.last(),
+                        Some(DialogComponent::SettingSelector { .. })
+                    );
+                    if !selector_open {
+                        tracing::warn!(
+                            "ini: settingOption outside a settingSelector block - dropped"
+                        );
+                        return;
+                    }
+                    let parts = split_ini_line(value);
+                    if let Some(first) = parts.first() {
+                        let label = first.trim().trim_matches('"').to_string();
+                        let mut assignments = Vec::new();
+                        for part in parts.iter().skip(1) {
+                            match part.split_once('=') {
+                                Some((k, v)) => match v.trim().parse::<f64>() {
+                                    Ok(value) => assignments.push(SettingAssignment {
+                                        name: k.trim().to_string(),
+                                        value,
+                                    }),
+                                    Err(_) => tracing::warn!(
+                                        "ini: settingOption assignment '{}' is not numeric - dropped",
+                                        part
+                                    ),
+                                },
+                                None => tracing::warn!(
+                                    "ini: settingOption part '{}' is not name=value - dropped",
+                                    part
+                                ),
+                            }
+                        }
+                        if let Some(DialogComponent::SettingSelector { options, .. }) =
+                            dialog.components.last_mut()
+                        {
+                            options.push(SettingSelectorOption { label, assignments });
+                        }
                     }
                 }
             }
@@ -4663,6 +4950,58 @@ indicator = { (tps > tpsflood) && (rpm < crankRPM) }, "FLOOD OFF", "FLOOD CLEAR"
                 group.options
             );
         }
+    }
+
+    /// `settingSelector`/`settingOption` inside a dialog must produce a
+    /// `SettingSelector` component with its options attached.
+    #[test]
+    #[serial(default_symbols)]
+    fn setting_selector_parses_options_with_assignments() {
+        set_default_symbols(Vec::<String>::new());
+
+        let ini = concat!(
+            "[MegaTune]\n",
+            "signature = \"x\"\n",
+            "queryCommand = \"Q\"\n",
+            "[UserDefined]\n",
+            "dialog = sensorCal, \"Calibrate MAP/Baro\"\n",
+            "\tsettingSelector = \"Common MAP Sensors\", {iat_adcChannel != 0}\n",
+            "\t\tsettingOption = \"MPX4115\", EngineCylinder=10.6, EngineVolume=121.7\n",
+            "\t\tsettingOption = \"GM 1-BAR\", EngineCylinder=10, EngineVolume=105\n",
+            "\tfield = \"Value At 0.0 Volts\", EngineCylinder\n",
+        );
+
+        let def = parse_ini(ini).expect("parses");
+        let dialog = def.dialogs.get("sensorCal").expect("dialog");
+        let selector = dialog
+            .components
+            .iter()
+            .find_map(|c| match c {
+                DialogComponent::SettingSelector {
+                    label,
+                    options,
+                    visibility_condition,
+                } => Some((label, options, visibility_condition)),
+                _ => None,
+            })
+            .expect("SettingSelector component present");
+        assert_eq!(selector.0, "Common MAP Sensors");
+        assert_eq!(selector.2.as_deref(), Some("iat_adcChannel != 0"));
+        assert_eq!(selector.1.len(), 2);
+        assert_eq!(selector.1[0].label, "MPX4115");
+        let names: Vec<&str> = selector.1[0]
+            .assignments
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["EngineCylinder", "EngineVolume"]);
+        assert!((selector.1[0].assignments[0].value - 10.6).abs() < f64::EPSILON * 10.0);
+        assert_eq!(selector.1[1].label, "GM 1-BAR");
+        // The following `field` line still lands as a separate component.
+        assert!(dialog
+            .components
+            .iter()
+            .any(|c| matches!(c, DialogComponent::Field { .. })));
     }
 
     /// `$tsCanId` used to resolve to byte 0 unconditionally, which misaddresses

@@ -44,7 +44,7 @@ export default function QuickStartGuide({ isOpen, onClose }: QuickStartGuideProp
   const steps: QuickStartStep[] = [
     {
       id: 'welcome',
-      title: 'Welcome to LibreTune',
+      title: 'Welcome to ŠS Tune',
       description: 'Quick-Start Guide',
       icon: Rocket,
       instructions: [

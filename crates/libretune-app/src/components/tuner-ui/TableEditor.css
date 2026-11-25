@@ -102,6 +102,12 @@
   position: relative;
 }
 
+/* Live zoom: the sticky axis headers pin to the container's edges, so the
+   padding would leave a strip where cells show past the headers. */
+.table-grid-container-live-zoom {
+  padding: 0;
+}
+
 /* Grid */
 .table-grid {
   border-collapse: collapse;
@@ -314,6 +320,12 @@
   height: 1px;
   background: var(--border-subtle);
   margin: var(--space-1) 0;
+}
+
+/* The grid is measured the moment Fit / live zoom changes; a cell still
+   animating its padding (`transition: all`) would give a half-way size. */
+.table-grid-fit .table-cell {
+  transition: none;
 }
 
 /* Fit mode (TableEditor): cells shed their padding and minimum widths so the

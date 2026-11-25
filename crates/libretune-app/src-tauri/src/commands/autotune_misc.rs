@@ -1,5 +1,6 @@
 //! Misc AutoTune commands (stop, recommendations, heatmap, send/burn, lock/unlock).
 
+use crate::state::AutoTuneLoadSource;
 use crate::AppState;
 use serde::Serialize;
 
@@ -86,6 +87,12 @@ pub struct AutotuneStatus {
     pub accepted_samples: u64,
     /// Filter rejections this session, most frequent reason first.
     pub rejections: Vec<AutotuneRejectionCount>,
+    /// The load source the running session actually uses, after backend-side
+    /// auto-detection (Speeduino's `algorithm` constant decides when the
+    /// channel name cannot). Lets the UI sync its dropdown to a session it
+    /// did not configure — mid-session restarts and re-attach — instead of
+    /// silently disagreeing with it. `None` when no session is running.
+    pub resolved_load_source: Option<AutoTuneLoadSource>,
 }
 
 /// One row of the rejection tally exposed by [`AutotuneStatus`].
@@ -120,6 +127,7 @@ pub async fn get_autotune_status(
             secondary_table_name: config.secondary_table_name.clone(),
             accepted_samples,
             rejections,
+            resolved_load_source: Some(config.load_source),
         },
         None => AutotuneStatus {
             running: false,
@@ -127,6 +135,7 @@ pub async fn get_autotune_status(
             secondary_table_name: None,
             accepted_samples,
             rejections,
+            resolved_load_source: None,
         },
     })
 }
@@ -253,33 +262,71 @@ pub async fn get_autotune_heatmap(
 ///
 /// # Arguments
 /// * `table_name` - Target VE table name
+/// * `live` - Live tune: apply only the cells that have gathered their full
+///   confidence weight, and do nothing (not an error) when there are none.
+///   Meant to be called on a timer while a session runs.
 ///
-/// Returns: Nothing on success
+/// Either way the running session is re-anchored on what was written (see
+/// `AutoTuneState::rebase_after_apply`), so it keeps learning from the table
+/// the engine is now actually running on.
+///
+/// Returns: how many cells were written
 #[tauri::command]
 pub async fn send_autotune_recommendations(
     state: tauri::State<'_, AppState>,
     table_name: String,
-) -> Result<(), String> {
-    // Collect recommendations
-    let (secondary_name, session_signature) = {
+    live: Option<bool>,
+) -> Result<usize, String> {
+    let live = live.unwrap_or(false);
+    let (session_signature, base_weight, settle_ms) = {
         let config_guard = state.autotune_config.lock().await;
-        let config = config_guard.as_ref();
-        (
-            config.and_then(|c| c.secondary_table_name.clone()),
-            config.map(|c| c.definition_signature.clone()),
-        )
+        match config_guard.as_ref() {
+            Some(c) => (
+                Some(c.definition_signature.clone()),
+                c.settings.base_weight,
+                // A configured lambda delay says how long the exhaust takes
+                // to report a change; without one the core's default applies.
+                (c.settings.lambda_delay_ms > 0.0)
+                    .then(|| (c.settings.lambda_delay_ms * 1.5) as u64 + 300),
+            ),
+            None => (None, 0.0, None),
+        }
     };
+    if live && session_signature.is_none() {
+        // No running session: nothing for live tune to do.
+        return Ok(0);
+    }
 
-    let recs = if matches!(
-        (Some(table_name.as_str()), secondary_name.as_deref()),
-        (Some(table), Some(secondary)) if table == secondary
-    ) {
-        let guard = state.autotune_secondary_state.lock().await;
-        guard.get_recommendations()
-    } else {
-        let guard = state.autotune_state.lock().await;
-        guard.get_recommendations()
+    // Recommendations are indexed by cell for the table they were accumulated
+    // on; writing them into any other table would corrupt it. Stop clears the
+    // config but not the recommendations, so route by the table name each
+    // state keeps.
+    let pick = |st: &libretune_core::autotune::AutoTuneState| {
+        if live {
+            st.confident_recommendations(base_weight)
+        } else {
+            st.get_recommendations()
+        }
     };
+    let (recs, is_primary) = {
+        let primary = state.autotune_state.lock().await;
+        if primary.table_name.as_deref() == Some(table_name.as_str()) {
+            (pick(&primary), true)
+        } else {
+            drop(primary);
+            let secondary = state.autotune_secondary_state.lock().await;
+            if secondary.table_name.as_deref() != Some(table_name.as_str()) {
+                return Err(format!(
+                    "Table {} is not part of the AutoTune session",
+                    table_name
+                ));
+            }
+            (pick(&secondary), false)
+        }
+    };
+    if recs.is_empty() && live {
+        return Ok(0);
+    }
     if recs.is_empty() {
         tracing::info!(table = %table_name, "send_autotune_recommendations: nothing to send (no recommendations accumulated)");
         return Err("No recommendations to send".to_string());
@@ -370,6 +417,7 @@ pub async fn send_autotune_recommendations(
     }
 
     // Apply recommendations
+    let mut applied: Vec<(usize, usize, f64)> = Vec::with_capacity(recs.len());
     for r in recs.iter() {
         if r.cell_x >= x_size || r.cell_y >= y_size {
             eprintln!(
@@ -380,6 +428,7 @@ pub async fn send_autotune_recommendations(
         }
         let idx = r.cell_y * x_size + r.cell_x;
         values[idx] = r.recommended_value;
+        applied.push((r.cell_x, r.cell_y, r.recommended_value));
     }
 
     // Convert back to raw bytes
@@ -423,12 +472,31 @@ pub async fn send_autotune_recommendations(
         .await;
     }
 
+    drop(cache_guard);
+
+    // The engine now runs on these values; a session that is still collecting
+    // has to judge them, not the ones it started with.
+    if is_primary {
+        state
+            .autotune_state
+            .lock()
+            .await
+            .rebase_after_apply(&applied, settle_ms);
+    } else {
+        state
+            .autotune_secondary_state
+            .lock()
+            .await
+            .rebase_after_apply(&applied, settle_ms);
+    }
+
     tracing::info!(
         table = %table_name,
-        cells_written = recs.len(),
+        cells_written = applied.len(),
+        live,
         "send_autotune_recommendations: written to ECU RAM and mirrored into the tune (burn separately to persist)"
     );
-    Ok(())
+    Ok(applied.len())
 }
 
 /// Burns the AutoTune recommendations to ECU flash memory.

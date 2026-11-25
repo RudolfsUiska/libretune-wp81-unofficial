@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ChevronRight, HelpCircle, ListChecks, Grid3x3, Search, Sparkles } from 'lucide-react';
+import { ChevronRight, Search } from 'lucide-react';
+import { iconForLabel, iconForMenuType } from '../itemIcons';
 import type { BackendMenuItem } from '../../types/app';
 import { AppBar, ContextMenu, ListItem, Pivot } from '../controls';
 import { cleanLabel, useMetro } from '../context';
@@ -55,7 +56,7 @@ export function TunePage({ menu }: { menu?: string }) {
           ];
         }
         const label = cleanLabel(item.label || item.target || '');
-        const Icon = item.type === 'Table' ? Grid3x3 : item.type === 'Help' ? HelpCircle : item.type === 'Std' ? Sparkles : ListChecks;
+        const Icon = iconForLabel(label, iconForMenuType(item.type), item.target);
         return [
           <ListItem
             key={`${item.target}-${depth}-${idx}`}

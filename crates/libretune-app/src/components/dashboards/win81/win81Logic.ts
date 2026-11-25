@@ -40,6 +40,48 @@ export function useWin81Readings(isConnected: boolean): Win81Readings {
   };
 }
 
+/**
+ * What a switchable tile shows. Tapping the tile steps to the next choice and
+ * the choice is remembered on this device - the tiles do not change on their
+ * own, so a glance always finds the same reading in the same place.
+ */
+export const TILE_CHOICES = {
+  mixture: ['afr', 'lambda'],
+  throttle: ['tps', 'advance'],
+} as const;
+
+export type TileChoiceKey = keyof typeof TILE_CHOICES;
+type Choices = { [K in TileChoiceKey]: (typeof TILE_CHOICES)[K][number] };
+
+const CHOICE_STORAGE_KEY = 'libretune.win81.tiles';
+
+export function loadTileChoices(): Choices {
+  const out = { mixture: 'afr', throttle: 'tps' } as Choices;
+  try {
+    const saved = JSON.parse(localStorage.getItem(CHOICE_STORAGE_KEY) ?? '{}') as Record<string, unknown>;
+    for (const key of Object.keys(TILE_CHOICES) as TileChoiceKey[]) {
+      const v = saved[key];
+      if ((TILE_CHOICES[key] as readonly unknown[]).includes(v)) (out as Record<string, unknown>)[key] = v;
+    }
+  } catch {
+    // Unreadable or unavailable storage: the defaults stand.
+  }
+  return out;
+}
+
+/** The choices with `key` stepped to its next option (saved). */
+export function nextTileChoice(current: Choices, key: TileChoiceKey): Choices {
+  const options = TILE_CHOICES[key] as readonly string[];
+  const next = options[(options.indexOf(current[key]) + 1) % options.length];
+  const out = { ...current, [key]: next } as Choices;
+  try {
+    localStorage.setItem(CHOICE_STORAGE_KEY, JSON.stringify(out));
+  } catch {
+    // Storage unavailable: the choice still holds for this session.
+  }
+  return out;
+}
+
 /** 0..1 position of a value in [min, max], clamped; 0 without a value. */
 export function fraction(value: number | undefined, min: number, max: number): number {
   if (value === undefined || !Number.isFinite(value)) return 0;

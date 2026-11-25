@@ -13,6 +13,222 @@ relevant.
 
 ## [Unreleased]
 
+### 2026-11-02 — AutoTune Y-axis flip, trace line, mid-session table switching (issue #132 follow-ups)
+
+Second pass on the three suggestions from the issue's final field report
+(two hours of testing on a dual-table TPS/Alpha-N setup):
+
+- **Y-axis order in AutoTune** — the recommendation grid now honors the same
+  global `table_y_axis_bottom` setting as the table editors (suggestion 2:
+  "the Y-axis is missing the option to sort in ascending or descending
+  order"). Toolbar toggle (ArrowUpDown); rows flip display-only with the
+  X-axis header moving to a sticky `<tfoot>`; all cell keys (locks, heatmap,
+  current cell, CSV) stay data-space.
+- **Trace line in AutoTune** — the grid draws the same visited-cell path the
+  fuel tables do (suggestion 3): 3 px line, age-faded dots, halo on the
+  current cell. Implemented as **shared primitives** extracted from the
+  tab-view TableEditor — `useTableTrail` (append/dedupe/prune + 5 Hz fade
+  tick, with cell-identity stabilization), `useTableGridGeometry` (measured
+  thead/tfoot/tbody geometry), and `TableTrailOverlay` (the SVG) — so this
+  is not a third hand-rolled copy of the drawing code. Toggle (MapPin)
+  persists as a view preference; draws whenever live data flows; the grid's
+  axis-channel subscription now falls back to canonical `rpm`/`map` when the
+  INI declares none (parity with the editors — previously nothing
+  highlighted at all on such INIs).
+- **Mid-session table switching** — the Primary/Secondary/Load Source
+  selectors are no longer locked while a session runs (suggestion 1's
+  remaining pain: switching demanded a stop/start, and `AutoTuneState::start`
+  clears accumulated recommendations, so both tables' tuning progress was
+  silently discarded). `start_autotune` now keeps the recommendations of any
+  slot whose table **and** bins did not change (`same_slot` + prev-config
+  snapshot); stop/start still clears. A table leaving the session with unsent
+  recommendations raises a Send & Switch / Discard & Switch / Cancel dialog
+  first. `get_autotune_status` exposes the session's resolved load source so
+  the dropdown can sync after backend-side Alpha-N detection (Speeduino's
+  `algorithm` constant) on re-attach or restart. Primary changes also reset
+  the manual load-source choice so detection re-runs for the new table.
+- Tests: 10 new frontend tests (trail overlay + toggle, Y flip render +
+  persistence, re-attach re-configure, switch guard dialog) and 5 Rust tests
+  (`same_slot` cases + restart preservation through the new
+  `start_autotune_inner`, split out of the command following the
+  `stop_autotune_inner` pattern).
+- Docs: usage guide gains the trace line, Y-axis order, and mid-session
+  switching sections; manual synced.
+
+### 2026-10-30 — Nightly build fix: Tauri crate/npm version realignment + PR-time drift guard (issue #345)
+
+The Oct 24 nightly failed on all three platforms ~1s into `tauri build`:
+PR #343's package-lock regeneration ("npm audit to 0") floated the
+`@tauri-apps/*` npm packages forward inside their `^` ranges while
+`Cargo.lock` kept the older Rust crates, and the CLI's major/minor
+consistency check refused the mixed set. No PR-time CI job runs
+`tauri build`, so only the nightly caught it.
+
+#### Fixed
+
+- Realigned `Cargo.lock` with `package-lock.json` so all crate/npm pairs
+  share a major.minor release: `tauri` 2.10.2 → 2.12.4 (wry 0.57, tao 0.37),
+  `tauri-plugin-dialog` 2.6.0 → 2.8.3, `tauri-plugin-opener` 2.5.3 → 2.7.2
+  (`tauri-plugin-fs` floated to 2.7.1 as a resolution side effect; it has no
+  npm counterpart so it is not part of the check). Verified:
+  `cargo check/clippy --workspace` clean, `cargo test --workspace` green,
+  `tauri build` passes the version gate and compiles, `cargo audit`
+  unchanged versus main (the 8 current advisories pre-date this change).
+
+#### Added
+
+- `npm run check:tauri-sync` (`scripts/check-tauri-version-sync.mjs`):
+  compares the `tauri*` crate versions in `Cargo.lock` against the
+  `@tauri-apps/*` package versions in `package-lock.json` and fails with
+  re-alignment instructions on any major.minor drift. Wired into the CI
+  `frontend` job and the nightly gate so this class of breakage is caught
+  at PR time instead of the next nightly.
+
+### 2026-10-22 — INI fidelity pass: displayOnlyField, power-cycle badges, dialog help links, 3D/curve metadata
+
+A coverage audit against the 687-file reference corpus (speeduino, rusEFI,
+FOME, epicECU, MS2/MS3/MShift) quantified what the parser silently dropped
+or parsed-but-never-used. This pass closes the small, high-frequency gaps;
+deferred items are listed at the end.
+
+#### Added
+
+- **`displayOnlyField`** (`DialogComponent::DisplayOnlyField` + parser arm +
+  `DisplayOnlyField.tsx`): read-only rows from
+  `displayOnlyField = [!|#]"Label" [, name] [, {vis}] [, {enable}]`. With a
+  constant it shows the current value (the option TEXT for `bits`, e.g. the
+  configured pin; number+units for scalars); without one (`blankfield`) it is
+  a condition-gated text line with the usual `#`/`!` header/note styling.
+  Restores speeduino's I/O summary rows, CAN source status lines, and MCU
+  warnings (263 lines across 4 corpus files previously invisible).
+- **Power-cycle badges**: constants listed in `[ConstantsExtensions]
+  requiresPowerCycle` (38,376 lines in 686/687 corpus files!) now flow
+  through `get_constant` as `requires_power_cycle` and render a
+  "power cycle" badge next to the label in every dialog field type
+  (Field/Checkbox/Slider/DisplayOnlyField), so users know a change only
+  applies after an ECU restart.
+- **Dialog `topicHelp`** (`DialogDefinition.topic_help` + parser arm): an
+  indented `topicHelp = "https://…"` inside a dialog now renders an
+  external-link button in the dialog header.
+- **`[TableEditor] gridOrient / upDownLabel`**: parsed into
+  `TableDefinition.grid_orient: (f32,f32,f32)` and
+  `up_label`/`down_label` (the old never-populated `up_color`/`down_color:
+  Option<u8>`-typed fields were renamed/retyped). Data is captured for the
+  3D view; renderer wiring is future work.
+- **`[CurveEditor] lineLabel`**: repeated legend labels captured into
+  `CurveDefinition.line_labels` (14,679 lines in 683/687 corpus files).
+
+#### Notes
+
+- `menuDialog = main` (709 lines, all files) is intentionally ignored — it
+  positions menus in TunerStudio's main window chrome, which has no
+  LibreTune equivalent.
+- Deferred (bigger efforts, tracked separately): real `liveGraph` rendering
+  (currently a labeled placeholder), stateful expression functions
+  (`smoothBasic`/`pastValue`/`maxValue` in LoggerDefinition calc fields),
+  FrontPage indicator rows.
+
+### 2026-10-22 — INI `slider` dialog directives render as range controls
+
+Follow-up to the checkbox fix (issue #338): the `slider` directive was
+likewise silently dropped by the parser, so settings exposed only through
+sliders were invisible and uneditable — e.g. every analog-sensor filter in
+speeduino's `sensorFilters` dialog, the flex-sensor filter, battery-voltage
+offset, boost-control sensitivity, and the VVT angle filter.
+
+#### Added
+
+- **`DialogComponent::Slider`** (`crates/libretune-core/src/ini/types.rs`)
+  with `label`, `name`, `orientation`, `visibility_condition`,
+  `enabled_condition`.
+- **Parser arm** for `slider = "Label", name, [horizontal|vertical],
+  [{visibility}, {enable}]` — the orientation token is case-insensitive and
+  captured lowercased; unrecognized bare tokens are ignored leniently.
+- **Frontend rendering** (`SliderField.tsx`, wired via
+  `DialogComponentRenderer`/`DialogFieldWrapper`): a range control bounded
+  by the constant's own min/max with a step from its `digits` precision, and
+  a live value readout with units. Dragging updates the display only — the
+  write is committed on release (pointer/key up, blur) so a drag can't spam
+  the ECU with serial writes. The INI orientation token is captured for
+  fidelity but the control renders horizontally regardless (vertical sliders
+  don't fit the dialog row grid).
+- **Search index**: slider labels and constant names are searchable
+  (`commands/menu.rs`).
+
+#### Tests
+
+- `tests/ini_parsing.rs`: the real speeduino forms (orientation + condition,
+  case-insensitive orientation, dual conditions, bare form).
+- `DialogRenderer.test.tsx`: bounds/readout rendering, drag-then-commit
+  write timing (exactly one `update_constant` per drag), no write when
+  released at the original position, enable-condition disabling.
+
+### 2026-10-22 — INI `checkbox` dialog directives render as checkboxes (issue #338)
+
+`checkbox = ...` lines inside `[UserDefined]` dialogs were silently dropped
+by the parser (no directive arm, no enum variant), so a dialog like
+
+```ini
+dialog = moreIgnitionOptions2, ""
+    field = "Use Prediction", use_prediction
+    checkbox = "Use Prediction", use_prediction, { !use_prediction }
+    checkbox = "Don't use Prediction", use_prediction, flipValue, { use_prediction }
+```
+
+rendered only the surviving `field =` line — and because two-option `bits`
+constants deliberately render as dropdowns, the settings showed as selectors
+instead of checkboxes. The `subMenu` entry point in the report was a red
+herring; the directive was missing from the model entirely.
+
+#### Added
+
+- **`DialogComponent::Checkbox`** (`crates/libretune-core/src/ini/types.rs`)
+  with `label`, `name`, `flip_value`, `visibility_condition`,
+  `enabled_condition`.
+- **Parser arm** (`parse_user_defined_entry` in
+  `crates/libretune-core/src/ini/parser.rs`) for
+  `checkbox = "Label", name, [flipValue], [{visibility}, {enable}]` — a bare
+  case-insensitive `flipValue` token sets `flip_value`; brace conditions
+  follow the `field` convention (two braces = visibility+enable, a single
+  brace = enable-only, i.e. greyed out not hidden).
+- **Frontend rendering** (`CheckboxField.tsx`, wired via
+  `DialogComponentRenderer`/`DialogFieldWrapper` in `PanelComponents.tsx`):
+  a real `<input type="checkbox">` — checked ⇄ non-zero (inverted by
+  `flipValue`), writing 1/0 through `update_constant`. The previously dead
+  checkbox CSS (`.settings-field--checkbox` etc.) is now used. Sibling
+  checkboxes bound to the same constant stay in step via the tab shell's
+  optimistic context update (pending-local override hands off to `context`
+  once it catches up), so the report's dual-checkbox "radio" pattern works:
+  toggling one flips the other and re-evaluates both enable conditions.
+- **Search index**: checkbox labels and constant names are searchable
+  (`commands/menu.rs`).
+
+#### Tests
+
+- `tests/ini_parsing.rs`: the report's exact snippet plus minimal and
+  dual-condition forms.
+- `DialogRenderer.test.tsx`: render, toggle-write semantics, `flipValue`
+  inversion, enable-condition disabling, and the dual-checkbox sibling-sync
+  scenario.
+
+### 2026-10-02 — Curve Editor honors INI `digits` precision (issue #331)
+
+The Curve Editor ignored the `digits` column of the underlying `[Constants]`
+and always rendered 2 decimals, so a `digits = 3` calibration (e.g. ADC volts
+at 0.001 resolution) showed `1.23` instead of `1.234` — and the edit box
+prefilled the truncated value, silently quantizing the tune on save.
+
+#### Fixed
+
+- **Backend** (`commands/curve_ops.rs`, `commands/tune_mismatch_view.rs`):
+  `CurveData` now carries `x_digits`/`y_digits` from `Constant.digits`
+  (parsing itself was already correct).
+- **Frontend** (`CurveEditor.tsx`, `types/app.ts`, `PopOutWindow.tsx`):
+  table cells, edit prefill, and axis labels format with the per-axis digits,
+  falling back to 2 decimals for payloads from an older backend.
+- **Tests**: INI reproducer-line parse test plus `CurveEditor.digits.test.tsx`
+  (render precision, legacy fallback, edit prefill).
+
 ### 2026-08-31 — Local MCP server (read-only)
 
 Ported OpenTune's MCP server onto LibreTune's agent tooling. External MCP

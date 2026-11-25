@@ -452,6 +452,10 @@ pub struct AutoTuneReferenceTables {
 #[derive(Debug)]
 pub struct AutoTuneState {
     pub is_running: bool,
+    /// The table these recommendations were accumulated for. Kept past
+    /// `stop()` (the session config is not) so a later send can refuse any
+    /// other table.
+    pub table_name: Option<String>,
     /// A set, not a list: the UI resends the *whole* current selection on
     /// every Lock click, so a `Vec` accumulated the same cell once per click
     /// and `unlock_cells` - which removed a single match - left the backend
@@ -488,12 +492,26 @@ pub struct AutoTuneState {
     // (a warm-up CLT below min_clt and a tip-in TPS rate above max_tps_rate
     // are the usual culprits).
     rejected_by_reason: HashMap<&'static str, u64>,
+    // The value each cell had when this session first wrote to it. Applying
+    // recommendations mid-session re-anchors a cell on what was written (see
+    // `rebase_after_apply`), and the authority limits are measured from that
+    // anchor - so on their own they would allow unlimited drift, one apply
+    // at a time. Every later proposal is bounded from the origin as well.
+    origins: HashMap<(usize, usize), f64>,
+    // Samples before this timestamp are ignored: the wideband is still
+    // reporting the mixture the previous table values produced.
+    settle_until_ms: Option<u64>,
 }
+
+/// How long after a mid-session apply the wideband reading is disregarded,
+/// when no lambda delay is known. Longer than the RPM-curve's worst case.
+const DEFAULT_APPLY_SETTLE_MS: u64 = 1000;
 
 impl Default for AutoTuneState {
     fn default() -> Self {
         Self {
             is_running: false,
+            table_name: None,
             locked_cells: HashSet::new(),
             recommendations: HashMap::new(),
             data_buffer: std::collections::VecDeque::new(),
@@ -503,6 +521,8 @@ impl Default for AutoTuneState {
             total_samples: 0,
             rejects_logged: 0,
             rejected_by_reason: HashMap::new(),
+            origins: HashMap::new(),
+            settle_until_ms: None,
         }
     }
 }
@@ -598,10 +618,64 @@ impl AutoTuneState {
         self.data_buffer.clear();
         self.total_samples = 0;
         self.rejected_by_reason.clear();
+        self.origins.clear();
+        self.settle_until_ms = None;
     }
 
     pub fn stop(&mut self) {
         self.is_running = false;
+    }
+
+    /// Re-anchor the session on values that have just been written to the ECU.
+    ///
+    /// A recommendation is "the cell should be X instead of the value it had
+    /// when the session started", learned from samples taken while the engine
+    /// ran on that starting value. Once X is in the ECU those samples describe
+    /// a table that no longer exists: left in place, every new sample - now
+    /// reading on target - would be averaged in as "no change needed from the
+    /// *old* value" and drag the recommendation back towards it. So each
+    /// applied cell starts over from what was written, with no evidence.
+    ///
+    /// `applied` is `(cell_x, cell_y, value_written)`. `settle_ms` is how long
+    /// the wideband needs before it reports the new mixture; samples inside
+    /// that window are dropped. Cumulative movement stays bounded because the
+    /// first value a cell had is remembered and limits later proposals too.
+    pub fn rebase_after_apply(&mut self, applied: &[(usize, usize, f64)], settle_ms: Option<u64>) {
+        if applied.is_empty() {
+            return;
+        }
+        for &(x, y, value) in applied {
+            if let Some(rec) = self.recommendations.get_mut(&(x, y)) {
+                self.origins.entry((x, y)).or_insert(rec.beginning_value);
+                rec.beginning_value = value;
+                rec.recommended_value = value;
+                rec.raw_required_cma = value;
+                rec.hit_weighting = 0.0;
+            }
+            if let Some(cell) = self
+                .reference_tables
+                .ve_table
+                .get_mut(y)
+                .and_then(|row| row.get_mut(x))
+            {
+                *cell = value;
+            }
+        }
+        let now = self.data_buffer.back().map(|p| p.timestamp_ms).unwrap_or(0);
+        self.settle_until_ms = Some(now + settle_ms.unwrap_or(DEFAULT_APPLY_SETTLE_MS));
+    }
+
+    /// Recommendations that are ready to be applied without a person looking
+    /// at them first: the cell has gathered its full confidence weight and
+    /// the proposal actually differs from what the ECU has.
+    pub fn confident_recommendations(&self, base_weight: f64) -> Vec<AutoTuneRecommendation> {
+        self.recommendations
+            .values()
+            .filter(|r| r.hit_weighting >= base_weight.max(1.0))
+            .filter(|r| (r.recommended_value - r.beginning_value).abs() > f64::EPSILON)
+            .filter(|r| !self.locked_cells.contains(&(r.cell_x, r.cell_y)))
+            .cloned()
+            .collect()
     }
 
     /// Configure the reference tables (Target AFR / lambda delay) for this
@@ -932,6 +1006,19 @@ impl AutoTuneState {
         self.data_buffer.push_back(point.clone());
         self.prune_data_buffer(point.timestamp_ms);
 
+        // Just after a mid-session apply the exhaust still carries the old
+        // mixture; judging the new values by it would undo them.
+        if let Some(until) = self.settle_until_ms {
+            if point.timestamp_ms < until {
+                *self
+                    .rejected_by_reason
+                    .entry("settling after apply")
+                    .or_insert(0) += 1;
+                return;
+            }
+            self.settle_until_ms = None;
+        }
+
         if let Err(reason) = self.classify(&point, filters) {
             // Count per reason for the UI's rejection indicator (issue #132):
             // a session that accepts nothing looks exactly like a broken one.
@@ -1137,6 +1224,12 @@ impl AutoTuneState {
 
         let clamped_ve =
             Self::apply_authority_limits(current_recs.beginning_value, ramped, authority);
+        // A cell already applied this session is bounded from where it began
+        // as well, so repeated applies cannot walk it past the limits.
+        let clamped_ve = match self.origins.get(&(cell_x_idx, cell_y_idx)) {
+            Some(&origin) => Self::apply_authority_limits(origin, clamped_ve, authority),
+            None => clamped_ve,
+        };
 
         // Below the change threshold, leave the cell alone rather than
         // proposing a fraction of a VE point that will only be rounded away.
@@ -2892,5 +2985,149 @@ mod audit_regression_tests {
         assert_eq!(state.find_bin_index(6400.0, &rpm), Some(5));
         assert_eq!(state.find_bin_index(600.0, &rpm), Some(0));
         assert_eq!(state.find_bin_index(3400.0, &rpm), Some(2));
+    }
+}
+
+#[cfg(test)]
+mod live_apply_tests {
+    use super::*;
+
+    const RPM: [f64; 3] = [2000.0, 3000.0, 4000.0];
+    const LOAD: [f64; 3] = [30.0, 50.0, 70.0];
+
+    fn point(afr: f64, t_ms: u64) -> VEDataPoint {
+        VEDataPoint {
+            rpm: 3000.0,
+            load: 50.0,
+            map: 50.0,
+            ve: 50.0,
+            afr,
+            clt: 90.0,
+            timestamp_ms: t_ms,
+            fuel_cut_active: Some(false),
+            accel_enrich_active: Some(false),
+            ..Default::default()
+        }
+    }
+
+    fn settings() -> AutoTuneSettings {
+        AutoTuneSettings {
+            base_weight: 0.0,
+            min_change: 0.0,
+            ..Default::default()
+        }
+    }
+
+    fn session() -> AutoTuneState {
+        let mut st = AutoTuneState::new();
+        st.set_reference_tables(AutoTuneReferenceTables {
+            ve_table: vec![vec![50.0; 3]; 3],
+            target_afr_table: vec![vec![14.0; 3]; 3],
+            lambda_delay_table: Vec::new(),
+        });
+        st.set_strict_lambda_match(false);
+        st.start();
+        st
+    }
+
+    fn feed(st: &mut AutoTuneState, afr: f64, from_ms: u64, n: u64, authority: &AutoTuneAuthorityLimits) {
+        for i in 0..n {
+            st.add_data_point(
+                point(afr, from_ms + i * 100),
+                &RPM,
+                &LOAD,
+                &settings(),
+                &AutoTuneFilters {
+                    min_clt: 71.0,
+                    ..Default::default()
+                },
+                authority,
+            );
+        }
+    }
+
+    fn cell(st: &AutoTuneState) -> AutoTuneRecommendation {
+        st.get_recommendations()
+            .into_iter()
+            .find(|r| (r.cell_x, r.cell_y) == (1, 1))
+            .expect("the 3000/50 cell was hit")
+    }
+
+    /// After an apply the engine runs on the new value and reads on target.
+    /// Those samples must confirm the new value, not pull the cell back
+    /// towards the one it had before.
+    #[test]
+    fn on_target_samples_after_an_apply_hold_the_applied_value() {
+        let authority = AutoTuneAuthorityLimits::default();
+        let mut st = session();
+        feed(&mut st, 14.7, 0, 40, &authority); // lean: wants 52.5
+        let applied = cell(&st).recommended_value;
+        assert!((applied - 52.5).abs() < 0.1);
+
+        st.rebase_after_apply(&[(1, 1, applied)], Some(500));
+        feed(&mut st, 14.0, 10_000, 40, &authority); // now on target
+
+        let rec = cell(&st);
+        assert_eq!(rec.beginning_value, applied);
+        assert!(
+            (rec.recommended_value - applied).abs() < 0.05,
+            "on-target samples must leave the applied value alone, got {}",
+            rec.recommended_value
+        );
+    }
+
+    /// The exhaust still carries the old mixture for a moment after a write.
+    #[test]
+    fn samples_inside_the_settle_window_are_dropped() {
+        let authority = AutoTuneAuthorityLimits::default();
+        let mut st = session();
+        feed(&mut st, 14.7, 0, 40, &authority);
+        let applied = cell(&st).recommended_value;
+        let last_ts = 39 * 100;
+
+        st.rebase_after_apply(&[(1, 1, applied)], Some(1000));
+        // Still lean readings, all inside the window: must not count.
+        feed(&mut st, 14.7, last_ts + 100, 5, &authority);
+        assert_eq!(cell(&st).recommended_value, applied);
+        assert!(st
+            .rejection_counts()
+            .iter()
+            .any(|(reason, n)| *reason == "settling after apply" && *n == 5));
+    }
+
+    /// Each apply re-anchors the cell, and the limits are measured from the
+    /// anchor - so without a session-wide bound a stuck-lean sensor would
+    /// walk the cell up by the limit on every apply.
+    #[test]
+    fn repeated_applies_cannot_exceed_the_limit_from_the_session_start() {
+        let authority = AutoTuneAuthorityLimits {
+            max_cell_percentage_change: 10.0,
+            ..Default::default()
+        };
+        let mut st = session();
+        let mut t = 0;
+        for _ in 0..6 {
+            feed(&mut st, 17.0, t, 40, &authority); // 21% lean every time
+            t += 40 * 100;
+            let v = cell(&st).recommended_value;
+            st.rebase_after_apply(&[(1, 1, v)], Some(0));
+            t += 100;
+        }
+        let v = cell(&st).beginning_value;
+        assert!(
+            v <= 55.0 + 1e-9,
+            "six applies at a 10% limit must stay within 10% of the original 50, got {v}"
+        );
+    }
+
+    #[test]
+    fn only_fully_weighted_changed_unlocked_cells_are_confident() {
+        let authority = AutoTuneAuthorityLimits::default();
+        let mut st = session();
+        feed(&mut st, 14.7, 0, 10, &authority); // 10 uniform hits => weight 10
+        assert!(st.confident_recommendations(20.0).is_empty(), "not enough weight yet");
+        assert_eq!(st.confident_recommendations(10.0).len(), 1);
+        st.lock_cells(vec![(1, 1)]);
+        assert!(st.confident_recommendations(10.0).is_empty(), "locked cells are never auto-applied");
     }
 }

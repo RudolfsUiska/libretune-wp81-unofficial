@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Wrench } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { Dialog, Button } from '../../common';
@@ -20,12 +19,12 @@ export function AboutDialog({ isOpen, onClose }: DialogProps) {
     <Dialog
       open={isOpen}
       onClose={onClose}
-      title="About LibreTune"
+      title="About ŠS Tune"
       size="sm"
     >
       <Dialog.Body className="dialog-about">
-        <div className="dialog-about-logo"><Wrench size={48} /></div>
-        <h3>LibreTune</h3>
+        <div className="dialog-about-logo"><img src="/app-icon.png" alt="ŠS Tune" width={96} height={96} /></div>
+        <h3>ŠS Tune</h3>
         <p className="dialog-version">
           Version {buildInfo?.version ?? 'unknown'}
         </p>

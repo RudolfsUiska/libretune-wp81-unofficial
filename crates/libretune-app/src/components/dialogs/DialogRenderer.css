@@ -48,6 +48,14 @@
   width: 100%;
 }
 
+/* The container scrolls; its rows must not shrink to fit it instead. A
+   top-level field row is a flex item (flex-shrink: 1), and on a short screen
+   it was squeezed to its 24px min-height while a wrapped label kept its
+   own height - the label then spilled over the next row. */
+.dialog-view .dialog-container > * {
+  flex-shrink: 0;
+}
+
 /* Simple field-list dialogs (e.g. Vehicle Information) have no explicit
    multi-column layout, so the "label fills remaining space, value pinned to
    a fixed-width column" grid (see .settings-field below) stretches the gap
@@ -224,6 +232,9 @@
   text-align: left;
   min-width: 0;
   display: flex;
+  /* A narrow label column (phone) puts the power-cycle badge and help icon
+     under the text instead of over it. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   flex: unset;
@@ -315,6 +326,87 @@
   font-size: 11px;
   color: var(--text-muted);
   font-weight: 400;
+}
+
+/* Slider rows — range control with live value readout */
+.dialog-view .field-slider-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.dialog-view .field-input-wrap input[type='range'] {
+  /* Override the generic text-input styling (border/padding/background) */
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.dialog-view .field-input-wrap input[type='range']:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.dialog-view .field-slider-value {
+  min-width: 52px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Read-only display rows (displayOnlyField) */
+.dialog-view .field-display-value {
+  width: 100%;
+  min-width: 0;
+  padding: 3px 7px;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.2;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dialog-view .settings-field--display-only.is-disabled .field-display-value {
+  opacity: 0.6;
+}
+
+/* "Requires power cycle" badge ([ConstantsExtensions] requiresPowerCycle) */
+.power-cycle-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--warning, #e6a700);
+  background: color-mix(in srgb, var(--warning, #e6a700) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning, #e6a700) 35%, transparent);
+  vertical-align: middle;
+}
+
+.settings-field .field-label .power-cycle-badge {
+  margin-left: 0;
+}
+
+.power-cycle-badge svg {
+  flex-shrink: 0;
 }
 
 .help-icon {
@@ -451,7 +543,15 @@
 /* Split long forms into two side-by-side columns */
 .dialog-view .panel-content--multi {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  /* Two columns while each can have 220px, one otherwise. The 50% floor
+     caps it at two; auto-fit does the collapsing without depending on a
+     container query, which only fired for panels inside a .dialog-column -
+     a top-level panel on a phone kept two columns and lost the right one
+     off the edge of the screen. */
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(100%, max(220px, calc(50% - 6px))), 1fr)
+  );
   column-gap: 12px;
   padding: 0 8px 4px;
 }
@@ -1098,4 +1198,87 @@
 
 .dialog-view .nested-panel--gauge-stack:empty {
   display: none;
+}
+
+/* Phone portrait: side-by-side panels have nowhere to go, so every row
+   layout stacks. Nothing in a dialog may be wider than the screen - the
+   container clips horizontally, so anything wider just loses its edge. */
+@media (max-width: 600px) {
+  .dialog-view .dialog-row-container,
+  .dialog-view .dialog-row-container--settings-split,
+  .dialog-view .dialog-row-container--table-settings,
+  .dialog-view .dialog-row-container--config-live {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dialog-view .dialog-row-xaxis > * {
+    flex-basis: 100%;
+  }
+
+  .dialog-view .hardware-test-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dialog-view .hardware-test-cell[data-hw-panel] {
+    grid-column: 1 / -1;
+  }
+
+  .dialog-view .nested-panel,
+  .dialog-view .panel-content,
+  .dialog-view .settings-field {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Command buttons (TPS "Grab closed/full", bench test, solenoids): four
+     ~80px columns cut every label to "Grab Cl...". Two per row, the whole
+     label on as many lines as it needs, and a finger-sized target. */
+  .dialog-view .panel-content--command-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 8px;
+  }
+
+  .dialog-view .panel-content--command-grid .command-button,
+  .dialog-view .command-button-field .command-button {
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 14px;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+  }
+
+  /* Bench test "count / on time / off time": three ~100px cells put each
+     label on top of its box. One field per row, like the rest. */
+  .dialog-view .panel-content--test-other {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dialog-view .panel-content--test-other > .settings-field {
+    grid-template-columns: minmax(0, 1fr) minmax(96px, 148px);
+    min-height: 40px;
+  }
+}
+
+/* Phone (portrait, or landscape with ~400px of height): a table under some
+   settings got only the space left over (the VE dialog showed ~4 rows).
+   Give it most of a screen and let the dialog scroll to it instead. */
+@media (max-width: 600px), (max-height: 500px) {
+  .dialog-view .nested-panel:has(.table-editor-2d),
+  .dialog-view .dialog-column:has(.table-editor-2d) {
+    flex: none;
+  }
+
+  .dialog-view .table-editor-2d.embedded {
+    height: auto;
+    min-height: min(72vh, 640px);
+  }
+}
+
+/* INI names used as labels ("gapTrackingLengthOverride") are one long word:
+   let them break rather than run under the input. */
+.dialog-view .settings-field .field-label-text {
+  overflow-wrap: anywhere;
 }

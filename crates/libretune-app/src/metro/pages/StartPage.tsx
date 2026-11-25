@@ -507,8 +507,20 @@ function ConnectTile(props: CommonTileProps) {
     </div>
   );
 
-  const faces = m.connected && !small ? [front, <ReadingsFace wide={props.size === 'wide'} />] : [front];
-  return <Tile {...props} label="ecu" faces={faces} />;
+  // One face, always: the live readings with the link state beside them. The
+  // tile used to flip between "connected" and the readings, so half the time
+  // a glance found the wrong one. Only while a connection is being made does
+  // it show progress instead - there is nothing to read yet.
+  if (small || busy || phase === 'signature-mismatch') {
+    return <Tile {...props} label="ecu" faces={[front]} />;
+  }
+  return (
+    <Tile
+      {...props}
+      label={`ecu · ${headline}`}
+      faces={[<ReadingsFace wide={props.size === 'wide'} connected={m.connected} />]}
+    />
+  );
 }
 
 function portLabel(p: string): string {
@@ -518,11 +530,13 @@ function portLabel(p: string): string {
 
 const LIVE = [...CHANNELS.rpm, ...CHANNELS.coolant, ...CHANNELS.afr];
 
-function ReadingsFace({ wide }: { wide: boolean }) {
+function ReadingsFace({ wide, connected }: { wide: boolean; connected: boolean }) {
   const v = useChannels(LIVE);
-  const rpm = pick(v, CHANNELS.rpm);
-  const clt = pick(v, CHANNELS.coolant);
-  const afr = pick(v, CHANNELS.afr);
+  // Disconnected: dashes, not the last values the store happens to hold.
+  const read = (names: readonly string[]) => (connected ? pick(v, names) : undefined);
+  const rpm = read(CHANNELS.rpm);
+  const clt = read(CHANNELS.coolant);
+  const afr = read(CHANNELS.afr);
   const cells = [
     { label: 'rpm', value: rpm !== undefined ? Math.round(rpm).toString() : '—' },
     { label: 'clt', value: clt !== undefined ? `${Math.round(clt)}°` : '—' },
@@ -530,6 +544,7 @@ function ReadingsFace({ wide }: { wide: boolean }) {
   ];
   return (
     <div className="wp-face-readings">
+      {connected ? <Cable size={32} strokeWidth={1.3} /> : <Unplug size={32} strokeWidth={1.3} />}
       {cells.map((c) => (
         <div key={c.label}>
           <div className="wp-face-big">{c.value}</div>

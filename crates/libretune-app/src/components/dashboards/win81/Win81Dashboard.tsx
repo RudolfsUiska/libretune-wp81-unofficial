@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { Activity, BatteryMedium, Gauge, Thermometer, Wind, Cable, Unplug } from 'lucide-react';
 import { getChannelHistoryBuffer } from '../../../stores/realtimeStore';
 import { CHANNELS, LIMITS } from '../engineReadings';
@@ -7,8 +7,11 @@ import {
   afrOutOfBand,
   alerts,
   fraction,
+  loadTileChoices,
+  nextTileChoice,
   show,
   useWin81Readings,
+  type TileChoiceKey,
   type Win81Readings,
 } from './win81Logic';
 import './Win81Dashboard.css';
@@ -29,6 +32,10 @@ export default function Win81Dashboard({ isConnected }: { isConnected: boolean }
   const active = alerts(r);
   const alerted = new Set(active.map((a) => a.key));
   const color = (key: string, normal: string) => (alerted.has(key) ? TILE_COLORS.red : normal);
+  // Switchable tiles show one reading until tapped (see TILE_CHOICES).
+  const [choices, setChoices] = useState(loadTileChoices);
+  const step = (key: TileChoiceKey) => () => setChoices((c) => nextTileChoice(c, key));
+  const showLambda = choices.mixture === 'lambda' && r.lambda !== undefined;
 
   return (
     <div className="w81-dash">
@@ -66,19 +73,13 @@ export default function Win81Dashboard({ isConnected }: { isConnected: boolean }
           area="a"
           i={2}
           color={afrOutOfBand(r.afr) ? TILE_COLORS.orange : TILE_COLORS.purple}
-          label={r.lambda !== undefined ? 'mixture' : 'afr'}
-          peek={
-            r.lambda !== undefined ? (
-              <div className="w81-medium">
-                <div className="w81-value">{show.lambda(r.lambda)}</div>
-                <div className="w81-caption">lambda</div>
-              </div>
-            ) : undefined
-          }
+          label="mixture"
+          onClick={step('mixture')}
+          hint={choices.mixture === 'lambda' ? 'tap for afr' : 'tap for lambda'}
         >
           <div className="w81-medium">
-            <div className="w81-value">{show.afr(r.afr)}</div>
-            <div className="w81-caption">afr</div>
+            <div className="w81-value">{showLambda ? show.lambda(r.lambda) : show.afr(r.afr)}</div>
+            <div className="w81-caption">{showLambda ? 'lambda' : 'afr'}</div>
           </div>
         </Tile>
 
@@ -98,8 +99,20 @@ export default function Win81Dashboard({ isConnected }: { isConnected: boolean }
         <Tile area="i" i={6} color={TILE_COLORS.darkBlue} small icon={<Thermometer />}>
           <SmallValue text={show.temp(r.iat)} unit="iat" />
         </Tile>
-        <Tile area="t" i={7} color={TILE_COLORS.magenta} small icon={<Activity />}>
-          <SmallValue text={r.tps === undefined ? '—' : `${Math.round(r.tps)}%`} unit="tps" />
+        <Tile
+          area="t"
+          i={7}
+          color={TILE_COLORS.magenta}
+          small
+          icon={<Activity />}
+          onClick={step('throttle')}
+          hint={choices.throttle === 'advance' ? 'tap for tps' : 'tap for advance'}
+        >
+          {choices.throttle === 'advance' ? (
+            <SmallValue text={show.timing(r.timing)} unit="adv" />
+          ) : (
+            <SmallValue text={r.tps === undefined ? '—' : `${Math.round(r.tps)}%`} unit="tps" />
+          )}
         </Tile>
       </div>
     </div>
@@ -128,18 +141,38 @@ interface TileProps {
   label?: string;
   icon?: ReactNode;
   small?: boolean;
-  /** Second face: the tile peeks up to it and back, like a live tile. */
-  peek?: ReactNode;
+  /** Tapping steps the tile to its next reading (switchable tiles only). */
+  onClick?: () => void;
+  /** What a tap does, for assistive tech. */
+  hint?: string;
   children: ReactNode;
 }
 
-function Tile({ area, i, color, label, icon, small, peek, children }: TileProps) {
+function Tile({ area, i, color, label, icon, small, onClick, hint, children }: TileProps) {
   const style = { gridArea: area, background: color, '--i': i } as CSSProperties;
+  const tappable = onClick
+    ? {
+        role: 'button',
+        tabIndex: 0,
+        title: hint,
+        onClick,
+        onKeyDown: (e: KeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onClick();
+          }
+        },
+      }
+    : {};
   return (
-    <section className={`w81-tile${small ? ' w81-small' : ''}`} style={style} aria-label={label}>
-      <div className={`w81-faces${peek ? ' w81-peeking' : ''}`}>
+    <section
+      className={`w81-tile${small ? ' w81-small' : ''}${onClick ? ' w81-tappable' : ''}`}
+      style={style}
+      aria-label={hint ? `${label ?? ''} ${hint}`.trim() : label}
+      {...tappable}
+    >
+      <div className="w81-faces">
         <div className="w81-face">{children}</div>
-        {peek && <div className="w81-face">{peek}</div>}
       </div>
       {!small && label && <span className="w81-label">{label}</span>}
       {!small && icon && <span className="w81-icon">{icon}</span>}

@@ -11,7 +11,8 @@ with no root and no PC.
 
 The plain Android edition is
 **[libretune-android-unofficial](https://github.com/RudolfsUiska/libretune-android-unofficial)**. The
-two install side by side: this one is `com.libretune.wp`, called "LibreTune WP".
+two install side by side: this one is `com.libretune.wp`, and on the phone it is called **"ŠS Tune"**
+(it was "LibreTune WP" up to v0.1.1).
 
 ## Download
 
@@ -27,10 +28,12 @@ asks. Plug the ECU in with an OTG cable and Android offers to open the app.
   - Long-press to unpin, resize or drag tiles. Pin any table or dialog to Start.
 - **Start backgrounds**: as on WP 8.1, a picture shows through the tiles and drifts as you scroll.
   There are built-in backgrounds, or use your own photo.
-- **tune**: the ECU's menus (fuel, ignition...) as a swipeable pivot.
+- **tune**: the ECU's menus (fuel, ignition...) as a swipeable pivot, each item with an icon for
+  what it is (fuel, spark, knock, cranking...). Back returns to the same place in the list.
 - **all commands**: every command in an alphabetical app list with a letter jump grid and search.
   Swipe left on Start to get there.
-- **Open pages**: an 8.1-style task switcher for everything you have open.
+- **Open pages**: an 8.1-style task switcher for everything you have open, most recent first, each
+  card showing a picture of the page as you last saw it.
 - **start+theme**: LibreTune's nine themes (dark, light, midnight, carbon, synthwave, solarized,
   nord, dracula, high contrast), each with its own accent. Or pick any of the 20 WP accent colours.
 - **Existing editors**: LibreTune's own tables, curves, INI dialogs, AutoTune and logging, restyled
@@ -51,6 +54,8 @@ one from the dashboard's **Change ▼** menu, under *Built-in*:
 | Dashboard | Look |
 |---|---|
 | **Windows 8.1** | The Windows 8.1 Start screen, laid out as a dashboard: an "Engine" title and clock, an alert-counting status tile, and live tiles for RPM (with a history graph), boost, AFR↔λ, coolant, battery, speed, IAT and TPS. Tiles turn red past their limits. |
+| **Zune** | The Zune HD music player: a big featured reading in Zune type, swipeable through RPM, boost, AFR, coolant and battery, with the rest in a strip below. |
+| **CYD Cluster** | A dark car cluster after the look of the ESP32 "Cheap Yellow Display" car dashboard (redrawn from its screenshots, no code taken): rev arc with shift light, gear box, four big corner readings, LOG and AUTOTUNE switches. Swipe for six ring gauges, and for a status page with every lamp your ECU's INI lists (sync, fan, launch, check engine, sensor errors...). |
 | **Cassette Futurism** | Amber phosphor on scorched brown: stepped RPM meter, LCD readouts, warning LEDs (after NovusGFX's retro design system, MIT) |
 | **Montego LCD** | The 1984 MG Montego's LCD cluster: diagonal ramp tacho, seven-segment readouts, bar gauges |
 | **CS 1.6** | A Counter-Strike 1.6 style game window (after ekmas/cs16.css, MIT) |

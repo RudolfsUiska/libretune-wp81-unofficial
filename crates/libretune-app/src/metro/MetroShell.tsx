@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useScrollMemory } from './scrollMemory';
 import ErrorBoundary from '../components/common/ErrorBoundary';
 import { MetroContext, type MetroCtx, type MetroShellProps } from './context';
 import { nav, useNav, type Route } from './nav';
@@ -26,6 +27,7 @@ export function MetroShell(props: MetroShellProps) {
   const { tabs, activeTabId, onTabSelect, actions, toolbarItems, iniCapabilities, currentProject } = props;
   const snap = useNav();
   const top = snap.routes[snap.routes.length - 1];
+  const scrollMemory = useScrollMemory(top.key, snap.routes.map((r) => r.key));
 
   useEffect(() => {
     nav.install();
@@ -114,7 +116,12 @@ export function MetroShell(props: MetroShellProps) {
           ECU {props.connectionPhase}
         </div>
         <main className="wp-stage">
-          <div key={top.key} className={`wp-stage-page ${snap.direction > 0 ? 'fwd' : 'back'}`}>
+          <div
+            key={top.key}
+            ref={scrollMemory.ref}
+            onScrollCapture={scrollMemory.onScroll}
+            className={`wp-stage-page ${snap.direction > 0 ? 'fwd' : 'back'}`}
+          >
             <ErrorBoundary>{renderRoute(top.route)}</ErrorBoundary>
           </div>
         </main>

@@ -7,6 +7,8 @@ import { contrastTextColor } from '../../utils/heatmapColors';
 import { askNumber } from '../../utils/askNumber';
 import { getUiScale } from '../../utils/uiScale';
 import { useTableYAxisBottom, setTableYAxisBottom, useTrailFadeSec } from '../../utils/useTableOrientation';
+import { useLiveCellZoom } from '../../hooks/useLiveCellZoom';
+import { axisChannelCandidates, firstLiveValue } from '../../utils/tableTrail';
 import './TableEditor.css';
 import TableEditor3D from '../tables/TableEditor3D';
 import TableToolbar from './table-editor/TableToolbar';
@@ -46,6 +48,9 @@ export interface CellPosition {
   row: number;
   col: number;
 }
+
+/** Per-device switch for live zoom (see useLiveCellZoom). */
+const LIVE_ZOOM_KEY = 'libretune.tableLiveZoom';
 
 /** Measured on-screen geometry of the grid, for the trail overlay. */
 interface GridGeometry {
@@ -107,11 +112,11 @@ export function TableEditor({
 }: TableEditorProps) {
   // Get realtime data from Zustand store - only subscribe to channels needed for live position
   const outputChannels = useMemo(() => {
-    const channels: string[] = [];
-    if (data.xOutputChannel) channels.push(data.xOutputChannel);
-    else channels.push('rpm'); // canonical fallback, matches the cursor below
-    if (data.yOutputChannel) channels.push(data.yOutputChannel);
-    else if (data.yAxis.length > 1) channels.push('map');
+    // Candidates, not just the declared names: see axisChannelCandidates.
+    const channels = axisChannelCandidates(data.xOutputChannel, 'rpm');
+    if (data.yOutputChannel || data.yAxis.length > 1) {
+      channels.push(...axisChannelCandidates(data.yOutputChannel, 'map'));
+    }
     return channels;
   }, [data.xOutputChannel, data.yOutputChannel, data.yAxis.length]);
   const realtimeData = useChannels(outputChannels);
@@ -246,10 +251,9 @@ export function TableEditor({
     // Parity with the dialog-embedded editor (TableEditor2D): an INI that
     // declares no output channels still gets a cursor from the canonical
     // rpm/map channels instead of silently showing nothing (issue #132).
-    const xChannel = data.xOutputChannel ?? 'rpm';
     const yChannel = data.yOutputChannel ?? 'map';
 
-    const xValue = realtimeData[xChannel];
+    const xValue = firstLiveValue(realtimeData, axisChannelCandidates(data.xOutputChannel, 'rpm'));
     if (xValue === undefined) return null;
     
     const col = findNearestBinIndex(xValue, data.xAxis);
@@ -259,7 +263,7 @@ export function TableEditor({
       return { row: 0, col };
     }
     
-    const yValue = realtimeData[yChannel];
+    const yValue = firstLiveValue(realtimeData, axisChannelCandidates(data.yOutputChannel, 'map'));
     if (yValue === undefined) return { row: 0, col };
     
     const row = findNearestBinIndex(yValue, data.yAxis);
@@ -387,6 +391,27 @@ export function TableEditor({
   // On by default when the UI is scaled up (a phone). Applied straight to the
   // element: reset, measure the natural size, set - no render feedback loop.
   const [fitToScreen, setFitToScreen] = useState(() => getUiScale() > 1);
+  // Live zoom: magnify around the live cell and follow it (see
+  // useLiveCellZoom). Per device, like the UI scale: it is a small-screen aid.
+  const [liveZoom, setLiveZoom] = useState(() => {
+    try {
+      return localStorage.getItem(LIVE_ZOOM_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleLiveZoom = useCallback(() => {
+    setLiveZoom((on) => {
+      try {
+        localStorage.setItem(LIVE_ZOOM_KEY, on ? '0' : '1');
+      } catch {
+        // Storage unavailable: the choice still holds for this session.
+      }
+      return !on;
+    });
+    // There is nothing to zoom in on without the live cursor.
+    setFollowMode(true);
+  }, []);
   useLayoutEffect(() => {
     const host = scrollHostRef.current;
     const table = tableElRef.current;
@@ -395,6 +420,8 @@ export function TableEditor({
       table.style.zoom = '';
       table.style.height = '';
     };
+    // Live zoom owns the table's zoom while it is on.
+    if (liveZoom) return;
     if (!fitToScreen) {
       reset();
       return;
@@ -434,7 +461,7 @@ export function TableEditor({
       ro.disconnect();
       reset();
     };
-  }, [fitToScreen, show3D, data.xAxis.length, data.yAxis.length]);
+  }, [fitToScreen, liveZoom, show3D, data.xAxis.length, data.yAxis.length]);
   const [gridGeometry, setGridGeometry] = useState<GridGeometry | null>(null);
 
   useLayoutEffect(() => {
@@ -488,6 +515,21 @@ export function TableEditor({
     // Bin-count changes, the orientation flip, and 2D/3D remounts all
     // require a fresh measurement.
   }, [data.xAxis.length, data.yAxis.length, yAxisBottom, show3D]);
+
+  useLiveCellZoom(tableElRef, scrollHostRef, {
+    enabled: liveZoom && !show3D,
+    geometry: gridGeometry,
+    cell: effectiveLivePosition
+      ? {
+          displayRow: trailDisplayRow(effectiveLivePosition.row, data.yAxis.length, yAxisBottom),
+          col: effectiveLivePosition.col,
+        }
+      : null,
+    colCount: data.xAxis.length,
+    rowCount: data.yAxis.length,
+    headerAtBottom: yAxisBottom,
+    viewKey: data.name,
+  });
 
   const cellCenter = useCallback(
     (row: number, col: number): { cx: number; cy: number } | null => {
@@ -1284,6 +1326,8 @@ export function TableEditor({
         onToggle3D={() => setShow3D(!show3D)}
         fitToScreen={fitToScreen}
         onToggleFitToScreen={() => setFitToScreen(!fitToScreen)}
+        liveZoom={liveZoom}
+        onToggleLiveZoom={toggleLiveZoom}
         onGenerate={generatableKind ? () => setShowGenerateDialog(true) : undefined}
         generatableLabel={generatableKind ? generatableTableLabel(generatableKind) : undefined}
         onImportTable={handleImportTable}
@@ -1313,9 +1357,12 @@ export function TableEditor({
 
       {/* Table */}
       {!show3D && (
-      <div className="table-grid-container" ref={scrollHostRef}>
+      <div
+        className={`table-grid-container ${liveZoom ? 'table-grid-container-live-zoom' : ''}`}
+        ref={scrollHostRef}
+      >
         <table
-          className={`table-grid ${fitToScreen ? 'table-grid-fit' : ''}`}
+          className={`table-grid ${fitToScreen || liveZoom ? 'table-grid-fit' : ''}`}
           ref={tableElRef}
         >
           {!yAxisBottom && <thead>
@@ -1371,6 +1418,8 @@ export function TableEditor({
                         <input
                           ref={inputRef}
                           type="text"
+                          inputMode="decimal"
+                          enterKeyHint="done"
                           className="table-cell-input"
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}

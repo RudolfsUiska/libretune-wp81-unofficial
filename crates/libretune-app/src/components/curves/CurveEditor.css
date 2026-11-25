@@ -15,6 +15,14 @@
 .curve-editor.standalone {
   height: 100%;
   min-height: 500px;
+  overflow-y: auto;
+}
+
+.curve-editor.standalone .curve-chart-container {
+  width: 100%;
+  max-width: 640px;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 /* Embedded mode (in dialog) */
@@ -128,31 +136,19 @@
 .curve-editor.embedded .curve-content {
   /* Chart beside the values table/gauge, matching TunerStudio's layout,
      instead of stacking them (which pushed a dialog with multiple curves
-     far below the fold). container-type lets the @container rule below
-     switch back to stacked once there's genuinely not enough width for
-     both side by side, rather than clipping or forcing the page wider. */
+     far below the fold). */
   flex-direction: row;
   padding: 8px;
   gap: 12px;
   overflow: visible;
   align-items: flex-start;
-  container-type: inline-size;
 }
 
-/* Chart (min 320px readable) + 220px table + 12px gap need ~552px; below
-   that there's no room to keep them side by side. */
-@container (max-width: 600px) {
-  .curve-editor.embedded .curve-content {
-    flex-direction: column;
-  }
-
-  .curve-editor.embedded .curve-chart-container {
-    max-width: 100%;
-  }
-
-  .curve-editor.embedded .curve-bottom-section {
-    width: 100%;
-  }
+/* The editor is the width container: a container query cannot style the
+   container itself, so the old rule on .curve-content only fired when some
+   ancestor happened to be a container. */
+.curve-editor {
+  container-type: inline-size;
 }
 
 /* Chart container */
@@ -176,7 +172,7 @@
      rule would be circular — the width IS the thing being measured). */
   width: 100%;
   max-width: 500px;
-  min-width: 320px;
+  min-width: min(320px, 100%);
   flex-shrink: 1;
 }
 
@@ -421,4 +417,42 @@
   height: 1px;
   margin: 4px 10px;
   background: rgba(255, 255, 255, 0.1);
+}
+
+/* Last in the file: it must override the mode rules above, which have the
+   same specificity. */
+/* Chart (min 320px readable) + 220px table + 12px gap need ~552px; below
+   that (a phone in portrait) the table goes under the chart. */
+@container (max-width: 600px) {
+  /* Selectors match the mode rules above in specificity: a container query
+     adds none, and the row layout must lose here. */
+  .curve-editor.embedded .curve-content,
+  .curve-editor.standalone .curve-content {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .curve-editor.embedded .curve-chart-container,
+  .curve-editor.standalone .curve-chart-container {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .curve-editor.embedded .curve-bottom-section,
+  .curve-editor.standalone > .curve-content > .curve-data-table {
+    width: 100%;
+  }
+
+  .curve-editor.standalone > .curve-content > .curve-data-table,
+  .curve-editor.embedded .curve-bottom-section .curve-data-table {
+    max-height: none;
+    overflow: visible;
+  }
+
+  /* The table no longer scrolls on its own; a header stuck to the page's
+     scroller would float over the rows of the graph above it. */
+  .curve-editor .curve-data-table thead {
+    position: static;
+  }
 }

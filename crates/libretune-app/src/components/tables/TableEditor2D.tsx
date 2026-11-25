@@ -25,6 +25,7 @@ import LambdaPreviewTable from './LambdaPreviewTable';
 import { useHeatmapSettings } from '../../utils/useHeatmapSettings';
 import { useTableYAxisBottom, setTableYAxisBottom, useTrailFadeSec } from '../../utils/useTableOrientation';
 import { useChannels } from '../../stores/realtimeStore';
+import { axisChannelCandidates, firstLiveValue } from '../../utils/tableTrail';
 import { useToast } from '../../contexts/ToastContext';
 import { getHotkeyManager } from '../../services/hotkeyService';
 import './TableComponents.css';
@@ -149,8 +150,9 @@ export default function TableEditor2D({
   // Get realtime data from Zustand store for live cursor (ECU-agnostic)
   const outputChannels = useMemo(() => {
     const channels: string[] = [];
-    if (x_output_channel) channels.push(x_output_channel);
-    if (y_output_channel) channels.push(y_output_channel);
+    // Candidates, not just the declared names: see axisChannelCandidates.
+    if (x_output_channel) channels.push(...axisChannelCandidates(x_output_channel, 'rpm'));
+    if (y_output_channel) channels.push(...axisChannelCandidates(y_output_channel, 'map'));
     const output = resolveEmbeddedTableOutputChannel(table_name, x_output_channel, y_output_channel);
     if (output) channels.push(output);
     if (channels.length === 0) {
@@ -289,7 +291,9 @@ export default function TableEditor2D({
   // (not blend/bias tables whose values aren't AFR).
   const isAfrTargetTable = table_name.toLowerCase().startsWith('afrtable');
   // VE tables only (veTableTbl / veTable1Tbl…veTable4Tbl) — not MAF, blend, or other maps.
-  const fitVeViewport = /^vetable(\d+)?tbl$/i.test(table_name);
+  // Not on a phone: squeezing 16 columns into ~380px clipped every number;
+  // there the VE table gets full-size cells and scrolls, like every other table.
+  const fitVeViewport = !compact && /^vetable(\d+)?tbl$/i.test(table_name);
 
   const selectedCellsCoords = useMemo(() => {
     if (!selectionRange) return [];
@@ -495,8 +499,8 @@ export default function TableEditor2D({
     const ttlMs = trailFadeSec > 0 ? trailFadeSec * 1000 : Infinity;
     const interval = setInterval(() => {
       const data = realtimeRef.current;
-      const xv = x_output_channel ? data?.[x_output_channel] : data?.rpm;
-      const yv = y_output_channel ? data?.[y_output_channel] : data?.map;
+      const xv = firstLiveValue(data, axisChannelCandidates(x_output_channel, 'rpm'));
+      const yv = firstLiveValue(data, axisChannelCandidates(y_output_channel, 'map'));
       if (xv === undefined || yv === undefined) return;
       const now = Date.now();
       const cell: [number, number] = [nearest(xv, localXBins), nearest(yv, localYBins)];
@@ -1573,8 +1577,8 @@ export default function TableEditor2D({
           onCellLock={handleCellLock}
           // Live cursor - maps realtime values to table position
           showLiveCursor={followMode && realtimeData !== undefined}
-          liveCursorX={x_output_channel ? realtimeData?.[x_output_channel] : realtimeData?.rpm}
-          liveCursorY={y_output_channel ? realtimeData?.[y_output_channel] : realtimeData?.map}
+          liveCursorX={firstLiveValue(realtimeData, axisChannelCandidates(x_output_channel, 'rpm'))}
+          liveCursorY={firstLiveValue(realtimeData, axisChannelCandidates(y_output_channel, 'map'))}
           // Heatmap color settings
           showColorShade={showColorShade}
           heatmapScheme={heatmapSettings.valueScheme}

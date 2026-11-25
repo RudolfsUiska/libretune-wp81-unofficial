@@ -120,6 +120,74 @@ followed the personalisation colour. The grid is 8×4 in landscape and 4×8 in
 portrait, in container units. Logic and tests are in `win81Logic.ts` and
 `__tests__/`.
 
+## Zune dashboard
+
+"Zune" (`builtin:zune`) is listed right after Windows 8.1. It's in
+`components/dashboards/zune/`, styled after the Zune HD "now playing" screen
+and the Zune desktop software:
+
+- black, with the featured reading drifting in huge faint type behind everything;
+- a pivot of giant lowercase words (engine, boost, mixture, coolant, battery)
+  that runs off the right edge, the featured one first and white;
+- the featured reading as square "album art" in the Zune magenta-to-orange,
+  with its last ~15 s drawn across it;
+- the other readings as a track list (speed, intake air, throttle and advance
+  are list-only), and a thin scrubber line as the meter, with the red mark.
+
+Tap a pivot word or a list row to feature that reading; the choice is kept in
+localStorage (`libretune.zune.featured`). Alerts use the Windows 8.1 dash's
+rules (`alerts` in `win81Logic.ts`, limits from `engineReadings.ts`): the art,
+meter and row turn red, and the screen never switches on its own. AFR out of
+band only turns orange. The art sits beside the list in landscape and above it
+in portrait.
+
+## CYD Cluster dashboard
+
+"CYD Cluster" (`builtin:cyd-cluster`) is a car-cluster layout after the look of
+[muki01/Car-Dashboard-ESP32-CYD](https://github.com/muki01/Car-Dashboard-ESP32-CYD),
+an LVGL dashboard for the ESP32 "Cheap Yellow Display". That project is
+GPL-3.0 and LibreTune is GPL-2.0-only, so **no code, fonts or icons were taken**:
+the layout was redrawn from its screenshots as original SVG/CSS in
+`components/dashboards/cyd/`.
+
+- **Cluster page**: a 270° rev arc (cyan, red from `SHIFT_RPM` = red line −500),
+  a 0-8 tick ring with the red zone from `LIMITS.rpm.red`, speed in the middle
+  (rpm when the ECU has no speed channel), a gear box under it that becomes a
+  blinking shift arrow, and coolant / battery / AFR / intake in the corners.
+  Coolant reads cyan while cold and red when hot.
+- **Engine page**: six ring gauges: throttle, MAP, AFR, intake, timing, injector duty.
+- Swipe or tap the dots to change page (kept in `libretune.cyd.page`).
+- Alerts (shared `alerts` rules) drop an amber banner; tap to dismiss until the set
+  of alerts changes. Gear reads `detectedGear`/`tcuCurrentGear` (rusEFI).
+- Numerals use Android's condensed Roboto (`sans-serif-condensed`); no font is bundled.
+- The cluster page is titled "Šķieneru Sniegums" (page 2 stays "Engine").
+- Top-bar switches (`useDashSwitches.ts`): **LOG** uses the shell's own logging
+  toggle, so it always agrees with App's logging poll. **AUTOTUNE** follows
+  `get_autotune_status`; switching it off calls `stop_autotune`, switching it on
+  opens the AutoTune page rather than starting a session, because starting needs
+  the table choice and the preflight safety check there. Both are disabled offline.
+
+## List icons
+
+Every Metro list row carries an icon chosen from its words
+(`metro/itemIcons.ts`, first matching rule wins, specific words first):
+the tune pivot (ECU menus: fuel, ignition, idle, knock, boost, cranking...), the
+all-commands list (the letter square became an icon; the menu path is the
+second guess), settings, and the open-pages captions. Unmatched rows fall back
+to their kind (table, dialog, help). Add words to `RULES` as new menus turn up;
+`__tests__/itemIcons.test.ts` pins real INI labels.
+
+## Page previews in "open pages"
+
+As on the phone, the switcher shows a picture of each open page
+(`metro/snapshots.ts`). Android draws the WebView into a small JPEG through a
+JS bridge (`SnapshotBridge` in `MainActivity.kt`, `window.LibreTuneNative`),
+answering asynchronously through `window.__metroSnapshotDone` so the page never
+blocks on its own drawing. A page captures itself 1.2 s after it appears, every
+20 s while it stays open, and just before its **pages** button opens the
+switcher. Pictures are kept in memory only and dropped when the page closes;
+without the bridge (desktop, tests) the cards keep their icon look.
+
 ## Where the code is
 
 ```
@@ -155,3 +223,27 @@ and passing it state and actions. Other edits outside `src/metro`:
 
 Tests: the App integration and a11y tests now drive the connection page instead
 of the removed toolbar; 399/399 pass (`npx vitest run`).
+
+## Phone layout fixes (Nov 2026)
+
+- **Dialog rows never shrink**: the dialog container scrolls; its top-level rows
+  are `flex-shrink: 0` (they were squeezed to 24px and wrapped labels spilled
+  over the next row — Vehicle Information).
+- **Curves stack in portrait**: `.curve-editor` is the width container; below
+  600px the table goes under the graph at full width (embedded and standalone).
+  The graph measures its real width in both modes; x-axis labels are capped to
+  what fits. The portrait rules sit last in `CurveEditor.css` on purpose.
+- **Phone dialog widths** (`DialogRenderer.css`, `max-width: 600px`): command
+  buttons two per row with full labels, bench-test count/on/off one per row,
+  long INI-name labels break, power-cycle badge wraps under the label.
+- **Embedded tables** get `min(72vh, 640px)` on a phone and the dialog scrolls;
+  the main VE table no longer uses "fit" on a phone (it clipped every number).
+- **Table/curve context menu**: a compact two-column sheet (≤46vh) on the half
+  of the screen away from the pressed cell (`data-half`), no keyboard shortcuts,
+  no autofocus on touch screens.
+- **Number keypad**: table cell edit inputs use `inputMode="decimal"`.
+- **Back keeps your place**: `metro/scrollMemory.ts` records each page's
+  scroll positions per back-stack entry and restores them when it remounts.
+- **Open pages, most recent first**: `metro/recentPages.ts`.
+- **CYD status page**: third page lists the INI `[FrontPage]` indicators
+  (`get_frontpage`), lit in their INI colour, alarms first (`CydStatus.tsx`).

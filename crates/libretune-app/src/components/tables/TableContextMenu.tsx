@@ -128,6 +128,8 @@ export default function TableContextMenu({
     <div
       ref={menuRef}
       className="table-context-menu"
+      // Which half was pressed: a phone shows the menu as a sheet on the other one.
+      data-half={typeof window !== 'undefined' && position.top > window.innerHeight / 2 ? 'lower' : 'upper'}
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`
@@ -174,7 +176,9 @@ export default function TableContextMenu({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleExecuteInput()}
-            autoFocus
+            // On a touch screen focusing it would open the keyboard over the
+            // menu on every long-press; tap the box to type.
+            autoFocus={!coarsePointer()}
           />
           <button className="apply-btn" onClick={handleExecuteInput}>Apply</button>
         </div>
@@ -275,4 +279,8 @@ export default function TableContextMenu({
       </div>
     </div>
   );
+}
+
+function coarsePointer(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
 }

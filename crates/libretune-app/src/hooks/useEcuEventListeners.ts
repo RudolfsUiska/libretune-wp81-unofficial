@@ -52,7 +52,7 @@ export function useEcuEventListeners(deps: UseEcuEventListenersDeps) {
 
   // Update window title with project name
   useEffect(() => {
-    const base = "LibreTune";
+    const base = "ŠS Tune";
     if (currentProject) {
       const title = `${currentProject.name} — ${base}`;
       document.title = title;

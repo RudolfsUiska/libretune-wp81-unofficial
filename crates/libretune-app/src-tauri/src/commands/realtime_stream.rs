@@ -63,7 +63,17 @@ const REALTIME_CHANNEL_ALIASES: &[(&str, &[&str])] = &[
     (
         "ve",
         &[
-            "veValue", "VE1", "ve1", "veMain", "VEValue", "ve", "VE", "veCurr",
+            // `currentVe` is what rusEFI has published since it retired
+            // `veValue`; without it AutoTune finds no VE and drops every sample.
+            "veValue",
+            "currentVe",
+            "VE1",
+            "ve1",
+            "veMain",
+            "VEValue",
+            "ve",
+            "VE",
+            "veCurr",
         ],
     ),
     (
@@ -196,7 +206,13 @@ pub(crate) async fn feed_data_logger(app_state: &AppState, data: &HashMap<String
     let values: Vec<f64> = logger
         .channels()
         .iter()
-        .map(|name| data.get(name).copied().unwrap_or(0.0))
+        // Log entries go to the UI as JSON, which cannot carry NaN/Infinity.
+        .map(|name| {
+            data.get(name)
+                .copied()
+                .filter(|v| v.is_finite())
+                .unwrap_or(0.0)
+        })
         .collect();
     logger.record(values);
 }
@@ -331,6 +347,7 @@ pub(crate) async fn feed_autotune_data(
         .get("ve")
         .or_else(|| data.get("VE"))
         .or_else(|| data.get("veValue"))
+        .or_else(|| data.get("currentVe"))
         .or_else(|| data.get("VEtable"))
         .copied()
     else {
@@ -345,6 +362,15 @@ pub(crate) async fn feed_autotune_data(
         .or_else(|| data.get("coolantTemperature"))
         .copied()
         .unwrap_or(0.0);
+
+    // A non-finite reading is not data: NaN passes every `<`/`>` range filter
+    // and would poison `last_tps`, so drop the tick.
+    if ![rpm, load_value, afr, ve, clt, tps]
+        .iter()
+        .all(|v| v.is_finite())
+    {
+        return;
+    }
 
     // `tps` was read above (before load_value) so a TPS load source can use it.
 
@@ -475,6 +501,47 @@ fn stream_context_filter(
         names.extend(referenced_identifiers(&channel.expression));
     }
     names
+}
+
+/// Numeric context for the stream's expressions: tune constants, with every
+/// scalar constant an expression names but the tune file does not carry read
+/// from the tune cache instead.
+///
+/// A rusEFI MSQ in `<pageData>` form has no named constants at all, so without
+/// the cache every unit switch read 0. rusEFI's `veTableYAxisDisplay` is
+/// `... || useMetricOnInterface ? veTableYAxis : veTableYAxis * 0.145038`:
+/// a metric tune got its load channel in PSI against kPa axis bins, and the
+/// live cursor sat on the bottom VE row whatever the MAP was.
+fn stream_numeric_context(
+    def: Option<&libretune_core::ini::EcuDefinition>,
+    tune: Option<&libretune_core::tune::TuneFile>,
+    cache: Option<&libretune_core::tune::TuneCache>,
+    filter: &std::collections::HashSet<String>,
+) -> HashMap<String, f64> {
+    let mut ctx = crate::commands::string_context::numeric_context_from_tune_def(tune, def);
+    let (Some(def), Some(cache)) = (def, cache) else {
+        return ctx;
+    };
+    for name in filter {
+        if ctx.contains_key(name) {
+            continue;
+        }
+        let Some(constant) = def.constants.get(name) else {
+            continue;
+        };
+        if !matches!(constant.shape, libretune_core::ini::Shape::Scalar) {
+            continue;
+        }
+        ctx.insert(
+            name.clone(),
+            crate::commands::constant_values::read_constant_from_cache(
+                constant,
+                def.endianness,
+                cache,
+            ),
+        );
+    }
+    ctx
 }
 
 /// Aborts any in-progress realtime streaming task. Call this from every
@@ -612,10 +679,8 @@ pub async fn start_realtime_stream(
         let mut numeric_ctx = {
             let def = app_state.definition.lock().await;
             let tune = app_state.current_tune.lock().await;
-            crate::commands::string_context::numeric_context_from_tune_def(
-                tune.as_ref(),
-                def.as_ref(),
-            )
+            let cache = app_state.tune_cache.lock().await;
+            stream_numeric_context(def.as_ref(), tune.as_ref(), cache.as_ref(), &context_filter)
         };
 
         // Cache app settings once — load_settings() reads from disk and must not run every tick.
@@ -679,9 +744,12 @@ pub async fn start_realtime_stream(
                 numeric_ctx = {
                     let def = app_state.definition.lock().await;
                     let tune = app_state.current_tune.lock().await;
-                    crate::commands::string_context::numeric_context_from_tune_def(
-                        tune.as_ref(),
+                    let cache = app_state.tune_cache.lock().await;
+                    stream_numeric_context(
                         def.as_ref(),
+                        tune.as_ref(),
+                        cache.as_ref(),
+                        &context_filter,
                     )
                 };
             }
@@ -944,15 +1012,14 @@ pub async fn start_realtime_stream(
 
                         apply_channel_aliases(&mut data);
 
-                        // Sanitize NaN/Infinity — serde_json cannot serialize these,
-                        // which would silently break app_handle.emit().
-                        for v in data.values_mut() {
-                            if !v.is_finite() {
-                                *v = 0.0;
-                            }
-                        }
-
-                        if let Err(e) = app_handle.emit("realtime:update", &data) {
+                        // Sanitize NaN/Infinity for the emit only — serde_json cannot
+                        // serialize these. `data` stays untouched so AutoTune and the
+                        // logger never see a fabricated 0.0.
+                        let emit_data: HashMap<&String, f64> = data
+                            .iter()
+                            .map(|(k, v)| (k, if v.is_finite() { *v } else { 0.0 }))
+                            .collect();
+                        if let Err(e) = app_handle.emit("realtime:update", &emit_data) {
                             stream_log(&format!("emit FAILED (real): {}", e));
                         }
 
@@ -1098,6 +1165,55 @@ mod context_filter_tests {
         let channels: HashMap<String, OutputChannel> = HashMap::new();
         assert!(stream_context_filter(Some(&channels), &[]).is_empty());
         assert!(stream_context_filter(None, &[]).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod numeric_context_tests {
+    use super::stream_numeric_context;
+    use libretune_core::ini::{Constant, DataType, EcuDefinition, Shape};
+    use libretune_core::tune::{TuneCache, TuneFile};
+
+    /// A `<pageData>` MSQ: the unit switch exists only as cache bytes. The
+    /// stream must see it, or rusEFI's load channel is converted to PSI.
+    #[test]
+    fn constants_missing_from_the_tune_are_read_from_the_cache() {
+        let mut metric = Constant::new("useMetricOnInterface", 0, 12, DataType::Bits);
+        metric.shape = Shape::Scalar;
+        metric.bit_position = Some(1);
+        metric.bit_size = Some(1);
+        let mut def = EcuDefinition::default();
+        def.page_sizes = vec![64];
+        def.n_pages = 1;
+        def.constants.insert(metric.name.clone(), metric);
+        let mut cache = TuneCache::from_definition(&def);
+        cache.load_page(0, vec![0u8; 64]);
+        assert!(cache.write_bytes(0, 12, &[0b0000_0010]));
+        let tune = TuneFile::new("test");
+        let filter = ["useMetricOnInterface".to_string(), "veTableYAxis".to_string()]
+            .into_iter()
+            .collect();
+
+        let ctx = stream_numeric_context(Some(&def), Some(&tune), Some(&cache), &filter);
+
+        assert_eq!(ctx.get("useMetricOnInterface"), Some(&1.0));
+        // Not a constant (a live channel): left for the runtime block.
+        assert!(!ctx.contains_key("veTableYAxis"));
+    }
+}
+
+#[cfg(test)]
+mod channel_alias_tests {
+    use super::*;
+
+    /// rusEFI master (2026) publishes VE as `currentVe`. AutoTune reads the
+    /// canonical `ve`, and a sample without it is dropped.
+    #[test]
+    fn rusefi_current_ve_is_published_as_ve() {
+        let mut data = HashMap::new();
+        data.insert("currentVe".to_string(), 62.5);
+        apply_channel_aliases(&mut data);
+        assert_eq!(data.get("ve"), Some(&62.5));
     }
 }
 

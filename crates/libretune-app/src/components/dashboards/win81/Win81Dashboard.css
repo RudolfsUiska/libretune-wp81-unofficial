@@ -246,20 +246,16 @@
   inset: 0;
 }
 
-/* Live tile peek: the second face slides up, holds, and slides back. */
-.w81-peeking .w81-face {
-  animation: w81-peek 12s cubic-bezier(0.1, 0.9, 0.2, 1) infinite;
+/* Switchable tiles: a tap steps to the next reading. They press in like a
+   Start tile so the tap is felt. */
+.w81-tappable {
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.12s ease-out;
 }
 
-.w81-peeking .w81-face + .w81-face {
-  top: 100%;
-  bottom: -100%;
-}
-
-@keyframes w81-peek {
-  0%, 44% { transform: translateY(0); }
-  50%, 94% { transform: translateY(-100%); }
-  100% { transform: translateY(0); }
+.w81-tappable:active {
+  transform: scale(0.97);
 }
 
 .w81-label {

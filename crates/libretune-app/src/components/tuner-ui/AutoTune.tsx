@@ -29,13 +29,21 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { FolderOpen, Save, Square, Play, Upload, X, Lock, LockOpen } from 'lucide-react';
+import { FolderOpen, Save, Square, Play, Upload, X, Lock, LockOpen, ArrowUpDown, MapPin, ZoomIn, Zap } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { valueToHeatmapColor } from '../../utils/heatmapColors';
 import { TuneHealthCard } from './TuneHealth';
 import { useToast } from '../../contexts/ToastContext';
 import { useChannels } from '../../stores/realtimeStore';
+import { useTableYAxisBottom, setTableYAxisBottom, useTrailFadeSec } from '../../utils/useTableOrientation';
+import { useTableTrail } from '../../hooks/useTableTrail';
+import { useTableGridGeometry } from '../../hooks/useTableGridGeometry';
+import { useLiveCellZoom, useFitTableZoom } from '../../hooks/useLiveCellZoom';
+import { getUiScale } from '../../utils/uiScale';
+import { trailDisplayRow, axisChannelCandidates, firstLiveValue } from '../../utils/tableTrail';
+import TableTrailOverlay from '../tables/TableTrailOverlay';
+import { Dialog, Button } from '../common';
 import './AutoTune.css';
 
 // =============================================================================
@@ -293,6 +301,9 @@ const STEADY_MS_DEFAULT = 800;
 /// persisted v1 blob carries require_steady_state / steady_state_time_ms,
 /// which no longer mean anything, and merging it would leave min_steady_ms at
 /// its default while the tuner believes their old setting survived.
+/** How often live tune offers its confident cells to the ECU. */
+const LIVE_TUNE_INTERVAL_MS = 10_000;
+
 const SETTINGS_KEY = 'libretune.autotune.settings.v2';
 
 function loadPersisted<T>(key: string, fallback: T): T {
@@ -315,10 +326,6 @@ function persist(key: string, value: unknown) {
   }
 }
 
-/** Stable empty list so the axis-channel subscription below can skip
- * subscribing entirely when the table declares no channels. */
-const NO_CHANNELS: string[] = [];
-
 /**
  * Index of the bin nearest to `value` — the cell a live reading falls into.
  * Matches the nearest-bin logic the table editors use for their cursors.
@@ -336,6 +343,23 @@ function nearestBinIndex(value: number, bins: number[]): number {
   return best;
 }
 
+/**
+ * Identity of the session configuration the mid-session restart effect
+ * reacts to: primary table, effective secondary, and load source. Settings,
+ * filters and authority are deliberately excluded — they re-configure the
+ * running session without touching which table the corrections belong to.
+ */
+function sessionIdentityOf(
+  primary: string,
+  secondaryEnabled: boolean,
+  secondary: string,
+  source: AutoTuneLoadSource
+): string {
+  const effectiveSecondary =
+    secondaryEnabled && secondary && secondary !== primary ? secondary : '';
+  return `${primary}|${effectiveSecondary}|${source}`;
+}
+
 export function AutoTune({ tableName: initialTableName = '', onClose, isConnected }: AutoTuneProps) {
   const { showToast } = useToast();
 
@@ -345,6 +369,9 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
   const [secondaryTableEnabled, setSecondaryTableEnabled] = useState(false);
   const [secondaryTable, setSecondaryTable] = useState('');
   const [activeView, setActiveView] = useState<'primary' | 'secondary'>('primary');
+  // Narrow screens show one of the two panels at a time (see the tab bar
+  // below); the grid is what matters while driving, so it is the default.
+  const [narrowPanel, setNarrowPanel] = useState<'table' | 'setup'>('table');
   const [availableTables, setAvailableTables] = useState<TableInfo[]>([]);
   const [tableData, setTableData] = useState<TableData | null>(null);
   const [_referenceData, setReferenceData] = useState<TableData | null>(null);
@@ -364,33 +391,54 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
   // the dropdown back (issue #132).
   const manualLoadSourceRef = useRef(false);
 
+  // A table about to leave the running session with unsent recommendations:
+  // null when no switch is pending. `apply` performs the switch the user
+  // asked for once the recommendations are dealt with (issue #132 follow-up —
+  // silently discarding an hour of corrections is how progress gets lost).
+  const [pendingDrop, setPendingDrop] = useState<{ tables: string[]; apply: () => void } | null>(null);
+
   // Current operating cell for the grid's "current" highlight, derived from
   // the table's own axis channels (issue #132: "no indication of the current
   // position"). A `currentCell` state used to sit here but its setter was
   // never called, so the highlight never fired. x indexes columns (x_bins),
   // y indexes rows (y_bins) — matching how the grid iterates them. A missing
   // Y channel (1-D curves) pins the row at 0, same as the table editors.
-  const currentXChannel = tableData?.x_output_channel ?? undefined;
-  const currentYChannel = tableData?.y_output_channel ?? undefined;
-  const liveAxisValues = useChannels(
-    currentXChannel
-      ? currentYChannel
-        ? [currentXChannel, currentYChannel]
-        : [currentXChannel]
-      : NO_CHANNELS
+  // Axis channels for the current-cell highlight and the trace line. Parity
+  // with the table editors (issue #132): an INI that declares no output
+  // channels still gets a position from the canonical rpm/map channels
+  // instead of silently showing nothing.
+  const currentYChannel =
+    tableData?.y_output_channel ?? (tableData && tableData.y_bins.length > 1 ? 'map' : undefined);
+  // A declared axis channel the stream does not publish (rusEFI's computed
+  // `veTableYAxisDisplay`) must not pin the cursor to row 0: try the channel
+  // behind it, then the canonical one - the backend bins samples by MAP
+  // regardless, so the hits landed in the right cells while the cursor sat
+  // on the bottom row.
+  const xCandidates = useMemo(
+    () => axisChannelCandidates(tableData?.x_output_channel, 'rpm'),
+    [tableData?.x_output_channel],
   );
+  const yCandidates = useMemo(
+    () => (currentYChannel ? axisChannelCandidates(tableData?.y_output_channel, 'map') : []),
+    [currentYChannel, tableData?.y_output_channel],
+  );
+  const trailChannels = useMemo(
+    () => [...xCandidates, ...yCandidates],
+    [xCandidates, yCandidates],
+  );
+  const liveAxisValues = useChannels(trailChannels);
   const currentCell = useMemo<{ x: number; y: number } | null>(() => {
-    if (!tableData || !currentXChannel) return null;
-    const xv = liveAxisValues[currentXChannel];
+    if (!tableData) return null;
+    const xv = firstLiveValue(liveAxisValues, xCandidates);
     if (xv === undefined) return null;
     const x = nearestBinIndex(xv, tableData.x_bins);
     if (!currentYChannel || tableData.y_bins.length <= 1) {
       return { x, y: 0 };
     }
-    const yv = liveAxisValues[currentYChannel];
+    const yv = firstLiveValue(liveAxisValues, yCandidates);
     if (yv === undefined) return { x, y: 0 };
     return { x, y: nearestBinIndex(yv, tableData.y_bins) };
-  }, [tableData, currentXChannel, currentYChannel, liveAxisValues]);
+  }, [tableData, currentYChannel, xCandidates, yCandidates, liveAxisValues]);
 
   // Settings state
   const [settings, setSettings] = useState<AutoTuneSettings>(() =>
@@ -564,6 +612,84 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
     () => availableTables.filter((t) => t.name !== selectedTable),
     [availableTables, selectedTable]
   );
+
+  // Y-axis origin at bottom-left — the same display-only flip the table
+  // editors have, driven by the same global setting. The AutoTune grid used
+  // to ignore it, which made comparing a recommendation against its fuel
+  // table needlessly error-prone (issue #132 follow-up: "the Y-axis is
+  // missing the option to sort in ascending or descending order").
+  const yAxisBottom = useTableYAxisBottom();
+
+  // Trace line over the recommendation grid (issue #132 follow-up: "a trace
+  // feature — like the one in the fuel tables — could be added"). Draws the
+  // visited-cell path with the same fade/dot/halo rendering the editors use,
+  // whenever live data flows; the toggle is a persisted view preference.
+  const [showTrail, setShowTrail] = useState(() =>
+    loadPersisted<{ showTrail: boolean }>(`${SETTINGS_KEY}.view`, { showTrail: true }).showTrail
+  );
+  // Live zoom: magnify the grid around the cell the engine is in and follow
+  // it, with the RPM/load headers pinned - the whole map is unreadable on a
+  // phone screen. Persisted with the other view preferences.
+  const [liveZoom, setLiveZoom] = useState(
+    () =>
+      loadPersisted<{ liveZoom?: boolean }>(`${SETTINGS_KEY}.view`, { liveZoom: false })
+        .liveZoom === true
+  );
+  useEffect(
+    () => persist(`${SETTINGS_KEY}.view`, { showTrail, liveZoom }),
+    [showTrail, liveZoom]
+  );
+
+  const trailFadeSec = useTrailFadeSec();
+  const { trail: historyTrail } = useTableTrail(
+    currentCell ? { row: currentCell.y, col: currentCell.x } : null,
+    trailFadeSec,
+    showTrail,
+  );
+
+  // Display order of the grid rows: data-space row indexes, optionally
+  // reversed. Every cell-level key below stays data-space, so flipping is
+  // rendering-only.
+  const gridRowOrder = useMemo(() => {
+    if (!tableData) return [];
+    const keys = [...tableData.y_bins.keys()];
+    return yAxisBottom ? keys.reverse() : keys;
+  }, [tableData, yAxisBottom]);
+
+  // Grid geometry for the trail overlay, measured off the rendered table.
+  const autotuneTableRef = useRef<HTMLTableElement | null>(null);
+  const autotuneScrollRef = useRef<HTMLDivElement | null>(null);
+  const gridGeometry = useTableGridGeometry(autotuneTableRef, autotuneScrollRef, {
+    colCount: tableData?.x_bins.length ?? 0,
+    rowCount: tableData?.y_bins.length ?? 0,
+    yAxisBottom,
+    viewKey: activeTable,
+  });
+
+  // Scaled-up UI (a phone): show the whole map unless live zoom is on, the
+  // same default the table editor's Fit has there.
+  const fitTable = !liveZoom && getUiScale() > 1;
+  useFitTableZoom(autotuneTableRef, autotuneScrollRef, {
+    enabled: fitTable && !!tableData,
+    colCount: tableData?.x_bins.length ?? 0,
+    rowCount: tableData?.y_bins.length ?? 0,
+    viewKey: activeTable,
+  });
+  useLiveCellZoom(autotuneTableRef, autotuneScrollRef, {
+    enabled: liveZoom,
+    geometry: gridGeometry,
+    cell:
+      currentCell && tableData
+        ? {
+            displayRow: trailDisplayRow(currentCell.y, tableData.y_bins.length, yAxisBottom),
+            col: currentCell.x,
+          }
+        : null,
+    colCount: tableData?.x_bins.length ?? 0,
+    rowCount: tableData?.y_bins.length ?? 0,
+    headerAtBottom: yAxisBottom,
+    viewKey: activeTable,
+  });
 
   useEffect(() => {
     if (!secondaryTableEnabled && activeView !== 'primary') {
@@ -804,29 +930,104 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
     }
   }, [tableData]);
 
+  // Everything a start_autotune invocation needs, shared by the initial
+  // Start (after preflight) and by mid-session re-configuration below.
+  const sessionPayload = useCallback(
+    () => ({
+      tableName: selectedTable,
+      secondaryTableName:
+        secondaryTableEnabled && secondaryTable && secondaryTable !== selectedTable
+          ? secondaryTable
+          : null,
+      loadSource,
+      settings,
+      filters,
+      authorityLimits: authority,
+      targetAfrTableName: targetAfrTable.trim() || null,
+      lambdaDelayTableName: lambdaDelayTable.trim() || null,
+      strictLambdaMatch,
+    }),
+    [
+      selectedTable,
+      secondaryTableEnabled,
+      secondaryTable,
+      loadSource,
+      settings,
+      filters,
+      authority,
+      targetAfrTable,
+      lambdaDelayTable,
+      strictLambdaMatch,
+    ]
+  );
+
   const reallyStartAutoTune = useCallback(async () => {
     setPreflight(null);
     try {
-      await invoke('start_autotune', {
-        tableName: selectedTable,
-        secondaryTableName:
-          secondaryTableEnabled && secondaryTable && secondaryTable !== selectedTable
-            ? secondaryTable
-            : null,
-        loadSource,
-        settings,
-        filters,
-        authorityLimits: authority,
-        targetAfrTableName: targetAfrTable.trim() || null,
-        lambdaDelayTableName: lambdaDelayTable.trim() || null,
-        strictLambdaMatch,
-      });
+      await invoke('start_autotune', sessionPayload());
+      // Record what the running session was configured with so the restart
+      // effect below does not immediately duplicate this invocation.
+      sessionStartedRef.current = sessionIdentityOf(
+        selectedTable,
+        secondaryTableEnabled,
+        secondaryTable,
+        loadSource
+      );
       setIsRunning(true);
       setError(null);
     } catch (e) {
       setError(`Failed to start AutoTune: ${e}`);
     }
-  }, [selectedTable, secondaryTableEnabled, secondaryTable, loadSource, settings, filters, authority, targetAfrTable, lambdaDelayTable, strictLambdaMatch]);
+  }, [sessionPayload, selectedTable, secondaryTableEnabled, secondaryTable, loadSource]);
+
+  // Mid-session re-configuration (issue #132 follow-up): the table and load
+  // source selectors stay live while a session runs, and changing one
+  // re-configures the session in place — the backend keeps the accumulated
+  // recommendations for any slot whose table and bins did not change.
+  // Switching used to demand a stop/start that silently threw both tables'
+  // tuning progress away, which is why the selectors were locked while
+  // running ("it doesn't allow selecting the second fuel table for tuning").
+  const sessionStartedRef = useRef<string | null>(null);
+  const sessionIdentity = sessionIdentityOf(
+    selectedTable,
+    secondaryTableEnabled,
+    secondaryTable,
+    loadSource
+  );
+  useEffect(() => {
+    if (!isRunning) return;
+    if (sessionStartedRef.current === sessionIdentity) return;
+    sessionStartedRef.current = sessionIdentity;
+    let cancelled = false;
+    (async () => {
+      try {
+        await invoke('start_autotune', sessionPayload());
+        if (cancelled) return;
+        // The backend may resolve the load source differently than requested
+        // (Speeduino's `algorithm` constant decides when the channel name
+        // cannot). Sync the dropdown so the UI never disagrees with the live
+        // session.
+        const status = await invoke<{ resolvedLoadSource?: AutoTuneLoadSource }>(
+          'get_autotune_status'
+        );
+        if (cancelled) return;
+        if (status?.resolvedLoadSource && status.resolvedLoadSource !== loadSource) {
+          setLoadSource(status.resolvedLoadSource);
+          sessionStartedRef.current = sessionIdentityOf(
+            selectedTable,
+            secondaryTableEnabled,
+            secondaryTable,
+            status.resolvedLoadSource
+          );
+        }
+      } catch (e) {
+        if (!cancelled) setError(`Failed to update the AutoTune session: ${e}`);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isRunning, sessionIdentity, sessionPayload, loadSource, selectedTable, secondaryTableEnabled, secondaryTable]);
 
   /**
    * Check before starting. AutoTune will happily run against a missing target
@@ -879,6 +1080,70 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
     }
   }, []);
 
+  /**
+   * Perform a session-table switch, first checking the table(s) leaving the
+   * running session for unsent recommendations (issue #132 follow-up). When
+   * none are pending — or no session is running — the switch applies
+   * immediately; otherwise a dialog offers send / discard / cancel.
+   */
+  const switchSessionTables = useCallback(
+    (droppedTables: string[], apply: () => void) => {
+      if (!isRunning || droppedTables.length === 0) {
+        apply();
+        return;
+      }
+      let cancelled = false;
+      (async () => {
+        try {
+          const withRecs: string[] = [];
+          for (const t of droppedTables) {
+            const recs = await invoke<unknown[]>('get_autotune_recommendations', {
+              tableName: t,
+            });
+            if (recs && recs.length > 0) withRecs.push(t);
+          }
+          if (cancelled) return;
+          if (withRecs.length === 0) {
+            apply();
+          } else {
+            setPendingDrop({ tables: withRecs, apply });
+          }
+        } catch {
+          // A diagnostics failure must not block the switch.
+          if (!cancelled) apply();
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    },
+    [isRunning]
+  );
+
+  /** Resolve the unsent-recommendations dialog: send them to the ECU, discard
+   *  them, or cancel the switch entirely. */
+  const resolvePendingDrop = useCallback(
+    async (mode: 'send' | 'discard' | 'cancel') => {
+      const pending = pendingDrop;
+      setPendingDrop(null);
+      if (!pending || mode === 'cancel') return;
+      if (mode === 'send') {
+        for (const t of pending.tables) {
+          try {
+            await invoke('send_autotune_recommendations', { tableName: t });
+          } catch (e) {
+            // Keep the session untouched — the recommendations are still
+            // unsent, and the user can retry the switch.
+            setError(`Failed to send recommendations for ${t}: ${e}`);
+            return;
+          }
+        }
+      }
+      pending.apply();
+    },
+    [pendingDrop]
+  );
+
   const sendRecommendations = useCallback(async () => {
     try {
       await invoke('send_autotune_recommendations', {
@@ -890,6 +1155,53 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
       setError(`Failed to send recommendations: ${e}`);
     }
   }, [activeTable, loadTableData]);
+
+  // Live tune: while a session runs, cells that have gathered their full
+  // confidence weight are written to ECU RAM on a timer, and the session
+  // carries on from the new values. Off on every start of the app - it is
+  // the one AutoTune option that changes the engine without being asked each
+  // time. Burning stays manual, so a bad drive is undone by a power cycle.
+  const [liveTune, setLiveTune] = useState(false);
+  const [liveApplied, setLiveApplied] = useState(0);
+  const liveBusyRef = useRef(false);
+  useEffect(() => {
+    if (!liveTune || !isRunning || !isConnected || !activeTable) return;
+    const tick = async () => {
+      if (liveBusyRef.current) return;
+      liveBusyRef.current = true;
+      try {
+        const written = await invoke<number>('send_autotune_recommendations', {
+          tableName: activeTable,
+          live: true,
+        });
+        if (written > 0) {
+          setLiveApplied((n) => n + written);
+          await loadTableData();
+        }
+      } catch (e) {
+        // A failed write must not keep retrying silently against the ECU.
+        setLiveTune(false);
+        setError(`Live tune stopped: ${e}`);
+      } finally {
+        liveBusyRef.current = false;
+      }
+    };
+    const timer = setInterval(tick, LIVE_TUNE_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [liveTune, isRunning, isConnected, activeTable, loadTableData]);
+
+  const toggleLiveTune = useCallback(() => {
+    setLiveTune((on) => {
+      if (!on) {
+        setLiveApplied(0);
+        showToast(
+          'Live tune on: confident cells are written to the ECU every 10 s while AutoTune runs. Nothing is burned - press Burn to keep the result.',
+          'warning',
+        );
+      }
+      return !on;
+    });
+  }, [showToast]);
 
   const toggleCellLock = useCallback((x: number, y: number) => {
     const key = `${x},${y}`;
@@ -1072,6 +1384,18 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
     warning: 'Check this',
     info: 'For information',
   };
+
+  // The X-axis header row, shared by the thead (default) and the tfoot it
+  // moves into when rows are flipped, so the axis labels sit under the
+  // highest load like the table editors (issue #132 follow-up).
+  const axisHeaderRow = (
+    <tr>
+      <th className="autotune-corner"></th>
+      {tableData.x_bins.map((bin, i) => (
+        <th key={i}>{bin.toFixed(0)}</th>
+      ))}
+    </tr>
+  );
 
   return (
     <div className="autotune">
@@ -1313,6 +1637,34 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
           </div>
         </div>
       )}
+      {pendingDrop && (
+        <Dialog
+          open
+          onClose={() => resolvePendingDrop('cancel')}
+          title="Unsent AutoTune recommendations"
+          size="sm"
+        >
+          <Dialog.Body>
+            <p>
+              <strong>{pendingDrop.tables.join(', ')}</strong>{' '}
+              {pendingDrop.tables.length === 1 ? 'has' : 'have'} accumulated recommendations
+              that have not been sent to the ECU. Leaving the session discards
+              them.
+            </p>
+          </Dialog.Body>
+          <Dialog.Footer>
+            <Button variant="secondary" onClick={() => resolvePendingDrop('cancel')}>
+              Cancel
+            </Button>
+            <Button variant="secondary" onClick={() => resolvePendingDrop('discard')}>
+              Discard &amp; Switch
+            </Button>
+            <Button variant="primary" onClick={() => resolvePendingDrop('send')}>
+              Send &amp; Switch
+            </Button>
+          </Dialog.Footer>
+        </Dialog>
+      )}
       {/* Header */}
       <div className="autotune-header">
         <div className="autotune-title-row">
@@ -1326,8 +1678,23 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
               <select
                 className="autotune-table-selector"
                 value={selectedTable}
-                onChange={(e) => setSelectedTable(e.target.value)}
-                disabled={isRunning}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (next === selectedTable) return;
+                  // When the new primary is the current secondary, the
+                  // secondary auto-moves off it, so both slots change hands.
+                  const dropped =
+                    next === secondaryTable && secondaryTableEnabled
+                      ? [selectedTable, secondaryTable]
+                      : [selectedTable];
+                  switchSessionTables(dropped, () => {
+                    setSelectedTable(next);
+                    // A new primary may index load differently — let
+                    // detection re-run for it rather than keep a manual
+                    // choice made against the previous table.
+                    manualLoadSourceRef.current = false;
+                  });
+                }}
               >
                 {availableTables.map((t) => (
                   <option key={t.name} value={t.name}>{t.title || t.name}</option>
@@ -1339,16 +1706,33 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
                 <input
                   type="checkbox"
                   checked={secondaryTableEnabled}
-                  onChange={(e) => setSecondaryTableEnabled(e.target.checked)}
-                  disabled={isRunning}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSecondaryTableEnabled(true);
+                      return;
+                    }
+                    const dropped =
+                      secondaryTable && secondaryTable !== selectedTable
+                        ? [secondaryTable]
+                        : [];
+                    switchSessionTables(dropped, () => setSecondaryTableEnabled(false));
+                  }}
                 />
                 Secondary:
               </label>
               <select
                 className="autotune-table-selector"
                 value={secondaryTable}
-                onChange={(e) => setSecondaryTable(e.target.value)}
-                disabled={!secondaryTableEnabled || isRunning}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (next === secondaryTable) return;
+                  const dropped =
+                    secondaryTable && secondaryTable !== selectedTable
+                      ? [secondaryTable]
+                      : [];
+                  switchSessionTables(dropped, () => setSecondaryTable(next));
+                }}
+                disabled={!secondaryTableEnabled}
               >
                 {secondaryOptions.length === 0 ? (
                   <option value="" disabled>
@@ -1410,10 +1794,10 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
           </div>
         )}
         <div className="autotune-controls">
-          <button onClick={loadReferenceTable} title="Load reference table from CSV">
+          <button className="autotune-ref-btn" aria-label="Load Ref" onClick={loadReferenceTable} title="Load reference table from CSV">
             <FolderOpen size={14} /> Load Ref
           </button>
-          <button onClick={saveReferenceTable} disabled={!tableData} title="Save current table as reference">
+          <button className="autotune-ref-btn" aria-label="Save Ref" onClick={saveReferenceTable} disabled={!tableData} title="Save current table as reference">
             <Save size={14} /> Save Ref
           </button>
           {isRunning ? (
@@ -1430,6 +1814,19 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
               <Play size={14} fill="currentColor" /> Start
             </button>
           )}
+          <button
+            onClick={toggleLiveTune}
+            className={`autotune-live-btn ${liveTune ? 'active' : ''}`}
+            aria-pressed={liveTune}
+            aria-label="Live tune"
+            title={
+              liveTune
+                ? `Live tune ON - ${liveApplied} cell update(s) written to the ECU this session`
+                : 'Live tune - apply confident cells to the ECU automatically while AutoTune runs'
+            }
+          >
+            <Zap size={14} /> Live{liveTune && liveApplied > 0 ? ` ${liveApplied}` : ''}
+          </button>
           <button onClick={sendRecommendations} disabled={!isRunning && heatmapData.length === 0}>
             <Upload size={14} /> Send to ECU
           </button>
@@ -1439,8 +1836,28 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
 
       {error && <div className="autotune-error">{error}</div>}
 
+      {/* Narrow screens only (CSS): the grid and the side panel take turns. */}
+      <div className="autotune-narrow-tabs" role="tablist">
+        <button
+          role="tab"
+          aria-selected={narrowPanel === 'table'}
+          className={narrowPanel === 'table' ? 'active' : ''}
+          onClick={() => setNarrowPanel('table')}
+        >
+          Table
+        </button>
+        <button
+          role="tab"
+          aria-selected={narrowPanel === 'setup'}
+          className={narrowPanel === 'setup' ? 'active' : ''}
+          onClick={() => setNarrowPanel('setup')}
+        >
+          Health &amp; Settings
+        </button>
+      </div>
+
       {/* Main content */}
-      <div className="autotune-content">
+      <div className={`autotune-content autotune-content--${narrowPanel}`}>
         {/* Left panel - Table view */}
         <div className="autotune-table-panel">
           <div className="autotune-table-toolbar">
@@ -1453,6 +1870,37 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
               <option value="change">Change Magnitude</option>
               <option value="none">Value Only</option>
             </select>
+            <button
+              onClick={() => setTableYAxisBottom(!yAxisBottom)}
+              className={yAxisBottom ? 'active' : ''}
+              aria-pressed={yAxisBottom}
+              aria-label="Y axis zero at bottom"
+              title={
+                yAxisBottom
+                  ? 'Y axis: zero at bottom (click for zero at top)'
+                  : 'Y axis: zero at top (click for zero at bottom)'
+              }
+            >
+              <ArrowUpDown size={14} />
+            </button>
+            <button
+              onClick={() => setShowTrail(!showTrail)}
+              className={showTrail ? 'active' : ''}
+              aria-pressed={showTrail}
+              aria-label="Toggle trace line"
+              title="Trace Line - show the path followed through the table"
+            >
+              <MapPin size={14} />
+            </button>
+            <button
+              onClick={() => setLiveZoom(!liveZoom)}
+              className={liveZoom ? 'active' : ''}
+              aria-pressed={liveZoom}
+              aria-label="Zoom on live cell"
+              title="Zoom in on the live cell and follow it (axis values stay pinned)"
+            >
+              <ZoomIn size={14} />
+            </button>
             <button onClick={lockSelectedCells} disabled={selectedCells.size === 0}>
               <Lock size={14} /> Lock
             </button>
@@ -1461,20 +1909,16 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
             </button>
           </div>
 
-          <div className="autotune-table-container">
-            <table className="autotune-table">
-              <thead>
-                <tr>
-                  <th className="autotune-corner"></th>
-                  {tableData.x_bins.map((bin, i) => (
-                    <th key={i}>{bin.toFixed(0)}</th>
-                  ))}
-                </tr>
-              </thead>
+          <div
+            className={`autotune-table-container ${liveZoom || fitTable ? 'autotune-table-container-live-zoom' : ''} ${fitTable ? 'autotune-table-container-fit' : ''}`}
+            ref={autotuneScrollRef}
+          >
+            <table className="autotune-table" ref={autotuneTableRef}>
+              {yAxisBottom ? <tfoot>{axisHeaderRow}</tfoot> : <thead>{axisHeaderRow}</thead>}
               <tbody>
-                {tableData.y_bins.map((yBin, y) => (
+                {gridRowOrder.map((y) => (
                   <tr key={y}>
-                    <th>{yBin.toFixed(0)}</th>
+                    <th>{tableData.y_bins[y].toFixed(0)}</th>
                     {tableData.x_bins.map((_, x) => {
                       const value = tableData.z_values[y]?.[x] ?? 0;
                       const key = `${x},${y}`;
@@ -1495,7 +1939,11 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
                               : `Value: ${value.toFixed(1)}`
                           }
                         >
-                          {entry && showHeatmap === 'change' ? (
+                          {/* The recommendation is what this view is for, so it
+                              shows in both heat maps - hover titles do not
+                              exist on a touch screen. "Value Only" keeps the
+                              table as the ECU has it. */}
+                          {entry && showHeatmap !== 'none' ? (
                             <span className="cell-change">
                               {entry.recommended_value.toFixed(1)}
                             </span>
@@ -1515,6 +1963,16 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
                 ))}
               </tbody>
             </table>
+            {showTrail && (
+              <TableTrailOverlay
+                geometry={gridGeometry}
+                trail={historyTrail}
+                rowCount={tableData.y_bins.length}
+                yAxisBottom={yAxisBottom}
+                fadeMs={trailFadeSec > 0 ? trailFadeSec * 1000 : Infinity}
+                currentCell={currentCell ? { row: currentCell.y, col: currentCell.x } : null}
+              />
+            )}
           </div>
 
           {/* Legend */}
@@ -1598,7 +2056,6 @@ export function AutoTune({ tableName: initialTableName = '', onClose, isConnecte
                   setLoadSource(e.target.value as AutoTuneLoadSource);
                   setLoadSourceHint(null);
                 }}
-                disabled={isRunning}
               >
                 <option value="map">MAP (Speed Density)</option>
                 <option value="maf">MAF</option>

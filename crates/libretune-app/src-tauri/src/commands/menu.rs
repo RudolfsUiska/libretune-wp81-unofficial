@@ -211,6 +211,20 @@ pub async fn get_searchable_index(
                     terms.push(label.clone());
                     terms.push(name.clone());
                 }
+                libretune_core::ini::DialogComponent::Checkbox { label, name, .. } => {
+                    terms.push(label.clone());
+                    terms.push(name.clone());
+                }
+                libretune_core::ini::DialogComponent::Slider { label, name, .. } => {
+                    terms.push(label.clone());
+                    terms.push(name.clone());
+                }
+                libretune_core::ini::DialogComponent::DisplayOnlyField { label, name, .. } => {
+                    terms.push(label.clone());
+                    if let Some(name) = name {
+                        terms.push(name.clone());
+                    }
+                }
                 libretune_core::ini::DialogComponent::RuntimeValue { label, name, .. } => {
                     terms.push(label.clone());
                     terms.push(name.clone());
@@ -238,6 +252,9 @@ pub async fn get_searchable_index(
                 }
                 libretune_core::ini::DialogComponent::Gauge { name, .. } => {
                     terms.push(name.clone());
+                }
+                libretune_core::ini::DialogComponent::SettingSelector { label, .. } => {
+                    terms.push(label.clone());
                 }
             }
         }

@@ -32,10 +32,12 @@ import { useDashboardCRUD } from './hooks/useDashboardCRUD';
 import { useGaugeRangeSync } from './hooks/useGaugeRangeSync';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import Win81Dashboard from './win81/Win81Dashboard';
+import ZuneDashboard from './zune/ZuneDashboard';
+import CydDashboard from './cyd/CydDashboard';
 import CassetteDashboard from './cassette/CassetteDashboard';
 import MontegoDashboard from './montego/MontegoDashboard';
 import Cs16Dashboard from './cs16/Cs16Dashboard';
-import { CASSETTE_DASH_PATH, CS16_DASH_PATH, MONTEGO_DASH_PATH, WIN81_DASH_PATH, isBuiltinDash } from './builtinDashes';
+import { CASSETTE_DASH_PATH, CS16_DASH_PATH, MONTEGO_DASH_PATH, WIN81_DASH_PATH, ZUNE_DASH_PATH, CYD_DASH_PATH, isBuiltinDash } from './builtinDashes';
 import { useDashboardFullscreen } from '../../utils/viewFullscreen';
 import '../../styles/view-fullscreen.css';
 import './TsDashboard.css';
@@ -420,6 +422,10 @@ export default function TsDashboard({ initialDashPath, isConnected = false }: Ts
         />
         {selectedPath === WIN81_DASH_PATH ? (
           <Win81Dashboard isConnected={isConnected} />
+        ) : selectedPath === ZUNE_DASH_PATH ? (
+          <ZuneDashboard isConnected={isConnected} />
+        ) : selectedPath === CYD_DASH_PATH ? (
+          <CydDashboard isConnected={isConnected} />
         ) : selectedPath === CASSETTE_DASH_PATH ? (
           <CassetteDashboard isConnected={isConnected} />
         ) : selectedPath === MONTEGO_DASH_PATH ? (

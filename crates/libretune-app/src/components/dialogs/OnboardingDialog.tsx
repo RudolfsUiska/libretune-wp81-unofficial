@@ -39,7 +39,7 @@ export default function OnboardingDialog({ isOpen, onClose, onComplete }: Onboar
   const steps: OnboardingStep[] = [
     {
       id: 'welcome',
-      title: 'Welcome to LibreTune',
+      title: 'Welcome to ŠS Tune',
       description: 'Professional ECU Tuning Software',
       icon: Car,
       details: [

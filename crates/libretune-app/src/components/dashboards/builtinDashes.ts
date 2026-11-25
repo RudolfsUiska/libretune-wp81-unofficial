@@ -8,9 +8,13 @@ export const CASSETTE_DASH_PATH = 'builtin:cassette-futurism';
 export const MONTEGO_DASH_PATH = 'builtin:montego-lcd';
 export const CS16_DASH_PATH = 'builtin:cs16';
 export const WIN81_DASH_PATH = 'builtin:windows-81';
+export const ZUNE_DASH_PATH = 'builtin:zune';
+export const CYD_DASH_PATH = 'builtin:cyd-cluster';
 
 export const BUILTIN_DASHES: DashFileInfo[] = [
   { name: 'Windows 8.1', path: WIN81_DASH_PATH, category: 'Built-in' },
+  { name: 'Zune', path: ZUNE_DASH_PATH, category: 'Built-in' },
+  { name: 'CYD Cluster', path: CYD_DASH_PATH, category: 'Built-in' },
   { name: 'Cassette Futurism', path: CASSETTE_DASH_PATH, category: 'Built-in' },
   { name: 'Montego LCD', path: MONTEGO_DASH_PATH, category: 'Built-in' },
   { name: 'CS 1.6', path: CS16_DASH_PATH, category: 'Built-in' },

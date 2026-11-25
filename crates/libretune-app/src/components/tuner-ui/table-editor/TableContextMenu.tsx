@@ -58,6 +58,8 @@ export default function TableContextMenu({
     <div 
       className="table-context-menu" 
       style={{ left: x, top: y }}
+      // Which half was pressed: a phone shows the menu as a sheet on the other one.
+      data-half={typeof window !== 'undefined' && y > window.innerHeight / 2 ? 'lower' : 'upper'}
       onClick={(e) => e.stopPropagation()}
     >
       <button className="context-menu-item" onClick={onResetToOriginal} disabled={!hasSelection}>

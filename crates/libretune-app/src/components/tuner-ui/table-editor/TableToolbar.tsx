@@ -1,4 +1,4 @@
-import { Copy, Clipboard, Undo2, Redo2, Flame, Crosshair, Box, Wand2, Upload, Download, ArrowUpDown, Shrink } from 'lucide-react';
+import { Copy, Clipboard, Undo2, Redo2, Flame, Crosshair, Box, Wand2, Upload, Download, ArrowUpDown, Shrink, ZoomIn } from 'lucide-react';
 import { useUiScale } from '../../../utils/uiScale';
 import '../TableEditor.css';
 
@@ -31,6 +31,9 @@ interface TableToolbarProps {
   /** Shrink the grid so the whole table fits without scrolling. */
   fitToScreen: boolean;
   onToggleFitToScreen: () => void;
+  /** Zoom in on the live cell and follow it; the axis headers stay pinned. */
+  liveZoom: boolean;
+  onToggleLiveZoom: () => void;
   /** Generate the whole table from engine specs (VE/ignition/AFR only). */
   onGenerate?: () => void;
   generatableLabel?: string;
@@ -66,6 +69,8 @@ export default function TableToolbar({
   onToggle3D,
   fitToScreen,
   onToggleFitToScreen,
+  liveZoom,
+  onToggleLiveZoom,
   onGenerate,
   generatableLabel,
   onImportTable,
@@ -241,6 +246,15 @@ export default function TableToolbar({
         title={`Fit whole table on screen - ${fitToScreen ? 'ON' : 'OFF'}`}
       >
         <Shrink size={14} /> <span className="table-toolbar-label">Fit</span>
+      </button>
+      <button
+        className={`table-toolbar-btn ${liveZoom ? 'active' : ''}`}
+        onClick={onToggleLiveZoom}
+        aria-pressed={liveZoom}
+        aria-label="Zoom on live cell"
+        title={`Zoom in on the live cell and follow it - ${liveZoom ? 'ON' : 'OFF'}`}
+      >
+        <ZoomIn size={14} /> <span className="table-toolbar-label">Zoom</span>
       </button>
 
       {onGenerate && (

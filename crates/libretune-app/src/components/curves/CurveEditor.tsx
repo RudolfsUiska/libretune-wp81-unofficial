@@ -107,6 +107,10 @@ export interface CurveData {
   y_axis?: [number, number, number] | null;
   x_output_channel?: string | null;
   gauge?: string | null;
+  /** Display precision for X bins, from the constant's `digits` column. Absent on stale payloads. */
+  x_digits?: number | null;
+  /** Display precision for Y bins, from the constant's `digits` column. Absent on stale payloads. */
+  y_digits?: number | null;
 }
 
 /** Values edited in a curve table (X = coolant/temperature bins, Y = PWM/output). */
@@ -173,6 +177,11 @@ export default function CurveEditor({
   const safeXBinsArray = hasValidData ? data.x_bins : [0];
   const safeXOutputChannel = hasValidData && data.x_output_channel ? data.x_output_channel : '';
 
+  // Display precision from the INI `digits` column (issue #331). Falls back
+  // to the historical 2 decimals for payloads from an older backend.
+  const xDigits = data.x_digits ?? 2;
+  const yDigits = data.y_digits ?? 2;
+
   // Get realtime value for the X output channel from Zustand store
   const xOutputChannelValue = useChannelValue(safeXOutputChannel, undefined);
   
@@ -205,8 +214,9 @@ export default function CurveEditor({
   // width so the SVG/axes can match it instead of assuming 500px.
   const [measuredChartWidth, setMeasuredChartWidth] = useState<number | null>(null);
 
+  // Both modes: a standalone curve on a phone in portrait has ~380px, not 500.
+  const hasChart = hasValidData;
   useEffect(() => {
-    if (!embedded) return;
     const el = chartContainerRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
@@ -215,7 +225,7 @@ export default function CurveEditor({
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [embedded]);
+  }, [embedded, hasChart]);
 
   // Update local values when data changes
   useEffect(() => {
@@ -261,7 +271,7 @@ export default function CurveEditor({
   // rendered chart box (see the ResizeObserver above) — CSS decides the
   // available space (100%, capped 320-500px), this just matches it; 500 is
   // only a placeholder for the first render before the box is measured.
-  const chartWidth = embedded ? Math.round(measuredChartWidth ?? 500) : 500;
+  const chartWidth = Math.round(measuredChartWidth ?? 500);
   const chartHeight = embedded ? 280 : 350;
   const padding = { top: 30, right: 20, bottom: 40, left: 50 };
 
@@ -362,14 +372,19 @@ export default function CurveEditor({
     
     // Calculate a nice round step value
     const xNiceStep = Math.ceil(xStep / 10) * 10 || xStep; // Round to nearest 10
-    const xLabelStep = xRange / Math.min(7, Math.ceil(xRange / xNiceStep));
+    // ...and no more than fit side by side: a phone in portrait has ~300px
+    // of plot, where seven "6857.00" labels ran into each other.
+    const plotWidth = chartWidth - padding.left - padding.right;
+    const labelChars = Math.max(xAxis.min.toFixed(xDigits).length, xAxis.max.toFixed(xDigits).length);
+    const labelsThatFit = Math.max(2, Math.floor(plotWidth / (labelChars * 6.5 + 14)));
+    const xLabelStep = xRange / Math.min(7, labelsThatFit, Math.ceil(xRange / xNiceStep));
     
     for (let x = xAxis.min; x <= xAxis.max + 0.001; x += xLabelStep) {
       const roundedX = Math.round(x);
       lines.push({
         x1: scaleX(roundedX), y1: padding.top,
         x2: scaleX(roundedX), y2: chartHeight - padding.bottom,
-        label: roundedX.toFixed(0),
+        label: roundedX.toFixed(xDigits),
         isAxis: roundedX === xAxis.min
       });
     }
@@ -383,13 +398,13 @@ export default function CurveEditor({
       lines.push({
         x1: padding.left, y1: scaleY(y),
         x2: chartWidth - padding.right, y2: scaleY(y),
-        label: y.toFixed(2),
+        label: y.toFixed(yDigits),
         isAxis: Math.abs(y - yAxis.min) < 0.001
       });
     }
     
     return lines;
-  }, [xAxis, yAxis, scaleX, scaleY, chartWidth, chartHeight, padding]);
+  }, [xAxis, yAxis, scaleX, scaleY, chartWidth, chartHeight, padding, xDigits, yDigits]);
 
   // Polyline points
   const polylinePoints = useMemo(() => {
@@ -608,7 +623,7 @@ export default function CurveEditor({
     pushHistory();
     setEditingCell({ index, axis });
     setEditValue(
-      (axis === 'x' ? localXBins[index] : localYBins[index]).toFixed(2),
+      (axis === 'x' ? localXBins[index] : localYBins[index]).toFixed(axis === 'x' ? xDigits : yDigits),
     );
   };
 
@@ -771,6 +786,7 @@ Suggestion: {errorInfo.suggestion}
             {editingX ? (
               <input
                 type="text"
+                inputMode="decimal"
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
                 onKeyDown={(e) => handleCellKeyDown(e, i, 'x')}
@@ -778,7 +794,7 @@ Suggestion: {errorInfo.suggestion}
                 autoFocus
               />
             ) : (
-              xValue.toFixed(2)
+              xValue.toFixed(xDigits)
             )}
           </td>
           <td
@@ -789,6 +805,7 @@ Suggestion: {errorInfo.suggestion}
             {editingY ? (
               <input
                 type="text"
+                inputMode="decimal"
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
                 onKeyDown={(e) => handleCellKeyDown(e, i, 'y')}
@@ -796,7 +813,7 @@ Suggestion: {errorInfo.suggestion}
                 autoFocus
               />
             ) : (
-              yValue.toFixed(2)
+              yValue.toFixed(yDigits)
             )}
           </td>
         </tr>
@@ -1034,6 +1051,7 @@ Suggestion: {errorInfo.suggestion}
         <div 
           className="curve-context-menu" 
           style={{ left: contextMenu.x, top: contextMenu.y }}
+          data-half={typeof window !== 'undefined' && contextMenu.y > window.innerHeight / 2 ? 'lower' : 'upper'}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="context-menu-section">

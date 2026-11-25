@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { Check, Search, X } from 'lucide-react';
+import { Check, ListChecks, Search, X } from 'lucide-react';
+import { iconForLabel } from '../itemIcons';
 import type { MenuItem } from '../../components/tuner-ui';
 import { AppBar, ContextMenu } from '../controls';
 import { cleanLabel, useMetro } from '../context';
@@ -209,7 +210,8 @@ export function AppsPage() {
 }
 
 function CommandRow({ cmd, onRun, onMenu }: { cmd: Command; onRun: () => void; onMenu?: (r: DOMRect) => void }) {
-  const initial = cmd.label.charAt(0).toUpperCase();
+  // The command's own words first, then the menu it sits in ("fuel › ...").
+  const Icon = iconForLabel(cmd.label, iconForLabel(cmd.path, ListChecks), cmd.target);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const long = useRef(false);
   return (
@@ -238,7 +240,9 @@ function CommandRow({ cmd, onRun, onMenu }: { cmd: Command; onRun: () => void; o
       onPointerCancel={() => timer.current && clearTimeout(timer.current)}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <span className="wp-cmd-icon">{cmd.checked ? <Check size={18} strokeWidth={2} /> : initial}</span>
+      <span className="wp-cmd-icon">
+        {cmd.checked ? <Check size={18} strokeWidth={2} /> : <Icon size={20} strokeWidth={1.6} aria-hidden />}
+      </span>
       <span className="wp-cmd-text">
         <span className="wp-cmd-label">{cmd.label.toLowerCase()}</span>
         <span className="wp-cmd-path">{cmd.path}</span>
